@@ -19,6 +19,11 @@ export default defineConfig({
       },
     },
   },
+  css: {
+    lightningcss: {
+      errorRecovery: true,
+    },
+  },
   server: {
     port: 8000,
   },

@@ -2,10 +2,40 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>curvetrace</title>
+<title>Curve Tracer</title>
+<link rel="stylesheet/less" type="text/css" href="./ui.less">
+<style>
+#wrap { position: absolute; top: 32px; width: 100%; bottom: 0; }
+#curve_trace { position: absolute; top: 32px; left: 32px; right: 32px; bottom: 32px; }
+.livegraph canvas { position: absolute; top: 0; left: 0; }
+#wrap h2, #sample-status { text-transform: uppercase; font-size: 11px; letter-spacing: 0.15em; }
+#sample-status { position: absolute; text-align: right; width: 100px; top: 10px; right: 42px; }
+#title { position: absolute; top: 10px; left: 67px; }
+#label-below { position: absolute; bottom: 20px; width: 100%; text-align: center; padding-left: 12px; }
+#label-side { position: absolute; left: 25px; top: 50%; transform-origin: 0 0; transform: rotate(90deg); text-align: center; text-indent: -3.5em; }
+#toolbar { position: absolute; top: 0; width: 100%; display: block; background: linear-gradient(270deg, #555 0%, #585858 25%, #333 100%); color: white; box-shadow: 0px 1px 2px rgba(0,0,0,0.5); }
+#toolbar p, #toolbar button { display: inline-block; height: 32px; vertical-align: top; }
+#update-notify { position: absolute; bottom: 0; left: 0; right: 0; }
+</style>
 </head>
 <body>
-<h1>curvetrace</h1>
+<div id="error-overlay">
+  <div id="error-status">Loading...</div>
+  <div id="connectError" style="display:none"><h1>Nonolith Connect not found</h1></div>
+  <div id="chooseDevices" style="display:none"><h1>Choose a device</h1><ul></ul></div>
+</div>
+<section id="wrap">
+  <div id="curve_trace" class="livegraph"></div>
+  <h2 id="title">FullScale Curve Trace</h2>
+  <div id="sample-status"><span id="samplecount">0</span> Samples</div>
+  <h2 id="label-below">Voltage</h2>
+  <h2 id="label-side">Current</h2>
+</section>
+<div id="toolbar">
+  <button id="startpause" title="Start" class="startbtn"></button>
+  <button id="download-btn" title="Export data"></button>
+</div>
+<div id="update-notify"></div>
 <script type="module" src="./curvetrace.ts"></script>
 </body>
 </html>

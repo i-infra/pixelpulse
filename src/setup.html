@@ -2,10 +2,125 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>setup</title>
+<title>Setup</title>
+<link href="./wizard.css" rel="stylesheet" type="text/css" />
+<style>
+#getbrowser {
+  color: black;
+  display: block;
+  text-decoration: none;
+  background: url('http://www.google.com/images/icons/product/chrome-128.png') no-repeat;
+  min-height: 64px;
+  padding: 32px 0 32px 140px;
+  width: 60%;
+  margin: 0 auto;
+  font-size: 85%;
+  line-height: 2em;
+}
+#getbrowser:hover { background-color: #ffffcc; }
+#getbrowser p { display: none; }
+
+#install-options {
+  vertical-align: top;
+  text-align: center;
+  margin: 20px 0;
+}
+#install-options a {
+  text-decoration: none;
+  color: inherit;
+  width: 128px;
+  display: inline-block;
+  min-height: 48px;
+  padding-top: 128px;
+  margin: 10px;
+}
+#install-options a small { display: block; font-size: 12px; color: #888; }
+#install-options .highlight { background-color: #ffffcc; font-weight: bold; }
+
+#install-note {
+  margin: 0 -20px;
+  margin-top: -20px;
+  vertical-align: top;
+  line-height: 1.1em;
+}
+#install-note div {
+  width: 43%;
+  display: inline-block;
+  margin: 20px;
+  font-size: 12px;
+  color: #888;
+}
+
+#install-mac { background: url('img/os-mac.png') no-repeat; }
+#install-win { background: url('img/os-win.png') no-repeat; }
+#install-linux { background: url('img/os-linux.png') no-repeat; }
+#install-success { display: none; }
+</style>
 </head>
 <body>
-<h1>setup</h1>
+<article>
+<section id="p1">
+<h1>Browser Check</h1>
+
+<a href="https://www.google.com/chrome" id="getbrowser">
+<p class="ischrome">Google Chrome is supported!</p>
+<p class="isfirefox">Pixelpulse, the CEE user interface, works better in Google Chrome. You can proceed with Firefox, but may encounter problems. Firefox support is coming soon.</p>
+<p class="unsupported">Pixelpulse, the CEE user interface, requires Google Chrome.</p>
+<p class="download">Click to download, then come back to this page in Google Chrome.</p>
+</a>
+
+<nav><button class="btn secondary" id="browsernext" onclick="nextPage()">Continue Anyway</button></nav>
+</section>
+
+<section id="p2">
+<h1>Install software</h1>
+
+<div id="install">
+<p><strong>Nonolith Connect</strong> is a small server that allows applications in your web browser to access a CEE connected to your USB port. <a href="http://github.com/nonolith/connect" target="github">Technical Details &raquo;</a></p>
+
+<div id="install-options">
+  <a id="install-win" href="https://s3.amazonaws.com/apps.nonolithlabs.com/download/nonolith-connect_1.3.exe">
+    Windows <small>XP, 7</small>
+  </a>
+  <a id="install-mac" href="https://s3.amazonaws.com/apps.nonolithlabs.com/download/nonolith-connect_1.3.dmg">
+    Mac OS X <small>10.7</small>
+  </a>
+  <a id="install-linux" href="http://wiki.nonolithlabs.com/cee/Nonolith_Connect_on_Linux" target="_nlwiki">
+    Linux <small>Ubuntu, Debian, Mint, Gentoo</small>
+  </a>
+</div>
+
+<div id="install-note">
+  <div>
+    <h2>Nonolith Connect was not found on this computer. Installation will progress to the next page when detected.</h2>
+  </div>
+  <div>
+    <h2>Already installed Nonolith Connect?</h2>
+    <p>Make sure it is running &amp; check your firewall settings to make sure it was allowed to listen on localhost, port 9003.</p>
+  </div>
+</div>
+</div>
+
+<div id="install-success">
+<p>Nonolith Connect is installed and running.</p>
+</div>
+
+</section>
+
+<section id="p3">
+<h1>Get started!</h1>
+
+<div>
+<p style="margin-top: -20px;">The diagram below shows how to use your CEE's two channels.</p>
+<img src="img/pin_guide.jpeg" style="display: block; margin: 5px auto;">
+<p>You can now plug your CEE into the computer's USB port.</p>
+</div>
+
+<nav><button class="btn primary" onclick="location.href='http://apps.nonolithlabs.com/pixelpulse#tour'">Get Started with Pixelpulse</button></nav>
+</section>
+</article>
+
+<div id="logo"></div>
 <script type="module" src="./setup.ts"></script>
 </body>
 </html>
