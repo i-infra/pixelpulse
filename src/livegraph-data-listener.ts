@@ -1,0 +1,612 @@
+/**
+ * Time-series graph data listener and graph views
+ * Ported from livegraph_data_listener.coffee
+ * Original: (C) Nonolith Labs
+ */
+
+import {
+  type CEEDevice, type Stream, type OutputSource, type UpdateMessage,
+  DataListener, server, TypedEvent,
+} from './dataserver.js';
+import {
+  Axis, Series, GraphCanvas, Dot, TriggerOverlay,
+  Action, DragScrollAction, AnimateXAction, ZoomXAction,
+  makeTransform, invTransform,
+} from './livegraph.js';
+
+// --- DataSeries: binds listener buffer data to a Series ---
+
+export class DataSeries extends Series {
+  updated: TypedEvent<[UpdateMessage]>;
+
+  constructor(
+    public listener: DataListener,
+    public xseries: 'time' | Stream,
+    public yseries: Stream,
+  ) {
+    super(
+      xseries === 'time' ? listener.xdata : listener.data[listener.streamIndex(xseries)],
+      listener.data[listener.streamIndex(yseries)],
+      [0, 0, 0],
+    );
+    this.updated = listener.updated;
+    listener.reset.subscribe(this.reset);
+    this.reset();
+  }
+
+  private reset = (): void => {
+    this.xdata = this.xseries === 'time'
+      ? this.listener.xdata
+      : this.listener.data[this.listener.streamIndex(this.xseries as Stream)];
+    this.ydata = this.listener.data[this.listener.streamIndex(this.yseries)];
+  };
+}
+
+// --- Flags (parsed from URL hash) ---
+
+interface Flags {
+  outputTrigger: boolean;
+}
+
+function parseFlags(): Flags {
+  const hash = document.location.hash;
+  return {
+    outputTrigger: hash.includes('outputTrigger'),
+  };
+}
+
+const flags = parseFlags();
+
+// --- TimeseriesGraphListener ---
+
+export class TimeseriesGraphListener extends DataListener {
+  xaxis: Axis;
+  graphs: TimeseriesGraph[] = [];
+  triggerOverlay: TriggerOverlay | null = null;
+  private updatePending = false;
+
+  constructor(device: CEEDevice, streams: Stream[], graphs: TimeseriesGraph[] = []) {
+    super(device, streams);
+    this.graphs = graphs;
+    this.xaxis = new Axis(-10, 0, 's', true);
+    this.xaxis.windowChanged = this.checkWindowChange;
+  }
+
+  makeGraph(stream: Stream, elem: HTMLElement, color: [number, number, number]): TimeseriesGraph {
+    console.assert(this.streams.includes(stream), 'stream', stream, 'not in', this.streams);
+    const g = new TimeseriesGraph(this, stream, elem, color);
+    this.graphs.push(g);
+    return g;
+  }
+
+  queueWindowUpdate(): void {
+    if (!this.updatePending) {
+      setTimeout(() => this.updateWindow(), 10);
+      this.updatePending = true;
+    }
+  }
+
+  updateWindow = (min?: number, max?: number): void => {
+    this.updatePending = false;
+    const lg = this.graphs[0];
+    if (!lg?.width) return;
+
+    min ??= this.xaxis.visibleMin;
+    max ??= this.xaxis.visibleMax;
+    const span = max - min;
+
+    if (this.trigger) {
+      this.trigger.holdoff = Math.max(0, 0.1 - span);
+    } else {
+      min = Math.max(min - 0.4 * span, this.xaxis.min);
+      max = Math.min(max + 0.4 * span, this.xaxis.max);
+    }
+
+    const pts = lg.width / 2 * (max - min) / span;
+    this.configure(min, max, pts);
+    this.submit();
+  };
+
+  private checkWindowChange = (min: number, max: number, _done?: boolean, target?: [number, number]): void => {
+    const lg = this.graphs[0];
+
+    if (target) {
+      if ((target[1] - target[0]) < 0.5 * (max - min)) return;
+      [min, max] = target;
+    }
+
+    const span = max - min;
+
+    if (
+      ((this.xmax < max || this.xmin > min)
+        && max <= this.xaxis.max && min >= this.xaxis.min)
+      || span / (this.xmax - this.xmin) * this.requestedPoints < 0.45 * lg.width
+    ) {
+      this.updateWindow(min, max);
+    }
+  };
+
+  goToWindow(min: number, max: number, animate = true): AnimateXAction | void {
+    if (animate) {
+      return new AnimateXAction({ time: 200 }, this.graphs[0], min, max, this.graphs);
+    } else {
+      this.xaxis.window(min, max, true);
+      this.redrawAll(true);
+    }
+  }
+
+  redrawAll(full = false): void {
+    for (const lg of this.graphs) {
+      lg.needsRedraw(full);
+    }
+  }
+
+  override onMessage(m: UpdateMessage): void {
+    super.onMessage(m);
+    this.redrawAll();
+  }
+
+  cancelAllActions(): void {
+    for (const lg of this.graphs) {
+      lg.startAction();
+    }
+  }
+
+  zoomCompletelyOut(animate = true): AnimateXAction | void {
+    return this.goToWindow(this.xaxis.min, this.xaxis.max, animate);
+  }
+
+  fakeAutoset(animate = true): AnimateXAction | void {
+    if (!this.trigger) return;
+    const src = this.trigger.stream.parent.source;
+    const sampleTime = this.device.sampleTime;
+    const f = 2;
+
+    let timescale: number;
+    switch (src.source) {
+      case 'adv_square':
+        timescale = ((src.highSamples ?? 0) + (src.lowSamples ?? 0)) * sampleTime * f;
+        break;
+      case 'sine': case 'triangle': case 'square': case 'arb':
+        timescale = (src.period ?? 1) * sampleTime * f;
+        break;
+      default:
+        timescale = 0.5;
+    }
+
+    return this.goToWindow(
+      Math.max(this.xaxis.min, -timescale),
+      Math.min(this.xaxis.max, timescale),
+      animate,
+    );
+  }
+
+  autozoom(): void {
+    if (this.trigger) {
+      this.fakeAutoset();
+    } else {
+      this.zoomCompletelyOut();
+    }
+  }
+
+  canChangeView(): boolean {
+    return !!this.trigger || !(server.device as CEEDevice | null)?.captureState;
+  }
+
+  updateDotsAll(): void {
+    for (const g of this.graphs) {
+      g.updateDots();
+    }
+  }
+
+  isTriggerEnabled(): boolean {
+    return !!this.trigger;
+  }
+
+  enableTrigger(): void {
+    this.xaxis.min = -1;
+    this.xaxis.max = 1;
+
+    for (const lg of this.graphs) {
+      lg.showXgridZero = true;
+    }
+
+    const defaultTriggerLevel = 2.5;
+    const tp = flags.outputTrigger ? 'out' : 'in';
+
+    this.configureTrigger(this.streams[0], defaultTriggerLevel, 0.1, 0, 0.5, tp);
+    this.triggerOverlay = new TriggerOverlay(this.graphs[0]);
+    this.triggerOverlay.position(defaultTriggerLevel);
+    this.setTrigger(this.streams[0], defaultTriggerLevel, false);
+    this.fakeAutoset(false);
+  }
+
+  dragTrigger(stream: Stream, level?: number): void {
+    if (stream.isSource() && this.device.hasOutTrigger) {
+      if (this.trigger) {
+        this.trigger.level = stream.sourceLevel();
+        level = this.trigger.level;
+      }
+    }
+
+    if (level != null) {
+      this.triggerOverlay?.position(level);
+    }
+  }
+
+  updateTriggerForOutput(): void {
+    if (!this.trigger) return;
+    const stream = this.trigger.stream;
+
+    if (stream.isSource() !== (this.trigger.type === 'out') && this.device.hasOutTrigger) {
+      this.setTrigger(stream, this.trigger.level);
+    }
+
+    this.dragTrigger(stream);
+  }
+
+  setTrigger(stream: Stream, level = 0, submit = true): void {
+    if (!this.trigger) return;
+    this.trigger.stream = stream;
+    this.trigger.level = level;
+
+    if (stream.isSource() && this.device.hasOutTrigger) {
+      this.trigger.force = 10;
+      this.trigger.type = 'out';
+    } else {
+      this.trigger.force = 0.5;
+      this.trigger.type = 'in';
+    }
+
+    this.dragTrigger(stream, level);
+    if (submit) this.submit();
+
+    if (this.trigger.type === 'in') {
+      this.triggerOverlay?.style('#ffaa00', 1);
+    } else {
+      this.triggerOverlay?.style('#22aa00', 0);
+    }
+
+    this.updateDotsAll();
+  }
+
+  override disableTrigger(): void {
+    this.xaxis.min = -10;
+    this.xaxis.max = 0;
+    this.xaxis.window(-10, 0, true);
+    for (const lg of this.graphs) {
+      lg.showXgridZero = false;
+    }
+    this.triggerOverlay?.remove();
+    this.triggerOverlay = null;
+    super.disableTrigger();
+    this.updateDotsAll();
+    this.redrawAll(true);
+  }
+}
+
+// --- TimeseriesGraph ---
+
+export class TimeseriesGraph extends GraphCanvas {
+  yaxis: Axis;
+  dseries: DataSeries;
+  stream: Stream;
+  dots: Record<string, Dot> = {};
+  dotConfig = '';
+
+  constructor(
+    public timeseries: TimeseriesGraphListener,
+    stream: Stream,
+    elem: HTMLElement,
+    color: [number, number, number],
+  ) {
+    const yaxis = new Axis(stream.min, stream.max, stream.units, true);
+
+    if (stream.units === 'mA') {
+      yaxis.prescale = 1000;
+      yaxis.unit = 'A';
+    } else {
+      yaxis.prescale = 1;
+    }
+
+    const dseries = new DataSeries(timeseries, 'time', stream);
+    dseries.color = color;
+
+    super(elem, timeseries.xaxis, yaxis, [dseries]);
+
+    this.yaxis = yaxis;
+    this.dseries = dseries;
+    this.stream = stream;
+    this.onResized = () => this.timeseries.queueWindowUpdate();
+  }
+
+  override onClick(pos: [number, number], _e: MouseEvent): void {
+    const [x, y] = pos;
+
+    if (this.dotConfig === 'wave' && this.dots.offset?.isNear(x, y, 10)) {
+      new DragDotAction(this, pos, (lg, _x, y) => {
+        lg.stream.parent.setAdjust({ offset: y });
+      });
+    } else if (this.dotConfig === 'wave' && this.dots.period?.isNear(x, y, 10)) {
+      new DragDotAction(this, pos, (lg, x, y) => {
+        const amplitude = y - (lg.stream.parent.source.offset ?? 0);
+        const period = Math.max(5, x * 4 / (server.device as CEEDevice).sampleTime);
+        lg.stream.parent.setAdjust({ amplitude, period });
+      });
+    } else if (this.dotConfig === 'square' && this.dots.v1?.isNear(x, y, 10)) {
+      new DragDotAction(this, pos, (lg, x, y) => {
+        const { highSamples = 0, lowSamples = 0 } = lg.stream.parent.source;
+        const period = highSamples + lowSamples;
+        const xAdj = Math.max(0, Math.min(period - 1, x / (server.device as CEEDevice).sampleTime)) + 1;
+        lg.stream.parent.setAdjust({
+          high: y,
+          highSamples: Math.round(xAdj),
+          lowSamples: period - Math.round(xAdj),
+          dutyCycleHint: xAdj / period,
+        });
+      });
+    } else if (this.dotConfig === 'square' && this.dots.v2?.isNear(x, y, 10)) {
+      new DragDotAction(this, pos, (lg, x, y) => {
+        const { dutyCycleHint = 0.5 } = lg.stream.parent.source;
+        const newPeriod = Math.round(Math.max(2, x / (server.device as CEEDevice).sampleTime + 1));
+        lg.stream.parent.setAdjust({
+          highSamples: Math.round(dutyCycleHint * newPeriod),
+          lowSamples: Math.round((1 - dutyCycleHint) * newPeriod),
+          low: y,
+          dutyCycleHint,
+        });
+      });
+    } else if (x > this.width - 45) {
+      new DragDotAction(this, pos, (lg, _x, y) => {
+        lg.stream.parent.setConstant(lg.stream.outputMode, y);
+      });
+    } else if (x < 45 && this.timeseries.trigger) {
+      if (this.timeseries.trigger.stream !== this.stream) {
+        this.timeseries.triggerOverlay?.remove();
+        this.timeseries.triggerOverlay = new TriggerOverlay(this);
+        this.timeseries.setTrigger(this.stream, 0, false);
+      }
+      new DragTriggerAction(this, pos);
+    } else if (this.timeseries.canChangeView()) {
+      new DragScrollAction(this, pos, this.timeseries.graphs);
+    }
+  }
+
+  override onDblClick(e: MouseEvent, pos: [number, number], btn: number): void {
+    if (!this.timeseries.canChangeView()) return;
+    const zf = (e.shiftKey || btn === 2) ? 2 : 0.5;
+
+    if (zf < 1 && this.timeseries.xaxis.span() < 40 * this.timeseries.device.sampleTime) {
+      return;
+    }
+
+    new ZoomXAction({ time: 200, zoomFactor: zf }, this, pos, this.timeseries.graphs);
+  }
+
+  resetDots(t: string): boolean {
+    if (this.dotConfig !== t) {
+      for (const dot of Object.values(this.dots)) {
+        dot.remove();
+      }
+      this.dots = {};
+      this.dotConfig = t;
+      return true;
+    }
+    return false;
+  }
+
+  updateDots(): void {
+    const trigger = this.timeseries.trigger;
+    const isTriggerStream = trigger && trigger.stream === this.stream;
+    const isSource = this.stream.isSource();
+    const s = this.stream.parent.source;
+    const sampleTime = (server.device as CEEDevice).sampleTime;
+
+    if (isSource && s.source === 'constant') {
+      if (this.resetDots('constant')) {
+        this.dots.d = new Dot(this, this.dseries.cssColor(), 5, 'r');
+      }
+      this.dots.d.position(null, s.value ?? 0);
+    } else if (isSource && (server.device as CEEDevice)?.hasOutTrigger && isTriggerStream) {
+      if (['sine', 'triangle', 'square'].includes(s.source)) {
+        if (this.resetDots('wave')) {
+          this.dots.offset = new Dot(this, this.dseries.cssColor(), 5, false);
+          this.dots.period = new Dot(this, this.dseries.cssColor(), 5, false);
+        }
+        this.dots.offset.position(0, s.offset ?? 0);
+        this.dots.period.position(
+          (s.period ?? 0) * sampleTime / 4,
+          (s.offset ?? 0) + (s.amplitude ?? 0),
+        );
+      } else if (s.source === 'adv_square') {
+        if (this.resetDots('square')) {
+          this.dots.v1 = new Dot(this, this.dseries.cssColor(), 5, false);
+          this.dots.v2 = new Dot(this, this.dseries.cssColor(), 5, false);
+        }
+        this.dots.v1.position(((s.highSamples ?? 0) - 1) * sampleTime, s.high ?? 0);
+        this.dots.v2.position(
+          ((s.highSamples ?? 0) + (s.lowSamples ?? 0) - 1) * sampleTime,
+          s.low ?? 0,
+        );
+      } else {
+        this.resetDots('');
+      }
+    } else {
+      this.resetDots('');
+    }
+  }
+
+  sourceChanged(_isSource: boolean, _m: OutputSource): void {
+    this.updateDots();
+    const trig = this.timeseries.trigger;
+    if (trig && trig.stream === this.stream) {
+      this.timeseries.updateTriggerForOutput();
+    }
+  }
+
+  gainChanged(g: number): void {
+    this.yaxis.window(this.yaxis.min / g, this.yaxis.max / g, true);
+    this.needsRedraw(true);
+  }
+
+}
+
+// --- DragDotAction ---
+
+type DragDotCallback = (lg: TimeseriesGraph, x: number, y: number) => void;
+
+class DragDotAction extends Action {
+  private withPos: DragDotCallback;
+  private transformData: ReturnType<typeof makeTransform>;
+
+  constructor(lg: TimeseriesGraph, pos: [number, number], fn?: DragDotCallback) {
+    super(lg, pos);
+    this.withPos = fn ?? (() => {});
+    lg.startDrag(pos);
+    this.transformData = makeTransform(lg.geom, lg.xaxis, lg.yaxis);
+    this.onDrag(pos);
+  }
+
+  override onDrag([x, y]: [number, number]): void {
+    const [ux, uy] = invTransform(x, y, this.transformData);
+    const lg = this.lg as TimeseriesGraph;
+    const clampedY = Math.min(Math.max(uy, lg.stream.min), lg.stream.max);
+    this.withPos(lg, ux, clampedY);
+  }
+}
+
+// --- DragTriggerAction ---
+
+class DragTriggerAction extends DragDotAction {
+  private y = 0;
+
+  constructor(lg: TimeseriesGraph, pos: [number, number]) {
+    super(lg, pos, (lg, _x, y) => {
+      this.y = y;
+      (lg as TimeseriesGraph).timeseries.dragTrigger(lg.stream, y);
+    });
+  }
+
+  override onRelease(): void {
+    const lg = this.lg as TimeseriesGraph;
+    lg.timeseries.setTrigger(lg.stream, this.y);
+  }
+}
+
+// --- XYGraphView ---
+
+export interface StreamSelectElement extends HTMLSelectElement {
+  stream: () => Stream;
+  selectStream: (s: Stream) => void;
+}
+
+export class XYGraphView {
+  graphdiv: HTMLDivElement;
+  xlabel: StreamSelectElement;
+  ylabel: StreamSelectElement;
+  lg: GraphCanvas;
+  xaxis!: Axis;
+  yaxis!: Axis;
+  xstream!: Stream;
+  ystream!: Stream;
+  series!: DataSeries;
+  color: [number, number, number] = [255, 0, 0];
+
+  private timeseries: TimeseriesGraphListener;
+
+  constructor(
+    public el: HTMLElement,
+    timeseries: TimeseriesGraphListener,
+    makeStreamSelect: () => StreamSelectElement,
+    layoutChanged: TypedEvent,
+  ) {
+    this.timeseries = timeseries;
+
+    this.graphdiv = document.createElement('div');
+    this.graphdiv.className = 'livegraph';
+    el.appendChild(this.graphdiv);
+
+    this.xlabel = makeStreamSelect();
+    this.xlabel.classList.add('xaxislabel');
+    el.appendChild(this.xlabel);
+    this.xlabel.addEventListener('change', this.axisSelectChanged);
+
+    this.ylabel = makeStreamSelect();
+    this.ylabel.classList.add('yaxislabel');
+    el.appendChild(this.ylabel);
+    this.ylabel.addEventListener('change', this.axisSelectChanged);
+
+    this.lg = new GraphCanvas(this.graphdiv, null as unknown as Axis, null as unknown as Axis, [null as unknown as Series], {
+      xbottom: true, yright: false, xgrid: true,
+    });
+
+    this._layoutChanged = layoutChanged;
+  }
+
+  private _layoutChanged: TypedEvent;
+
+  private axisSelectChanged = (): void => {
+    const xaxis = this.xlabel.stream();
+    const yaxis = this.ylabel.stream();
+    if (xaxis !== this.xstream || yaxis !== this.ystream) {
+      this.configure(xaxis, yaxis);
+    }
+  };
+
+  configure(xstream: Stream, ystream: Stream): void {
+    this.xstream = xstream;
+    this.ystream = ystream;
+    this.xaxis = new Axis(xstream.min, xstream.max);
+    this.yaxis = new Axis(ystream.min, ystream.max);
+
+    this.lg.xaxis = this.xaxis;
+    this.lg.yaxis = this.yaxis;
+
+    this.xlabel.selectStream(xstream);
+    this.ylabel.selectStream(ystream);
+
+    this.hidden();
+
+    this.series = new DataSeries(this.timeseries, xstream, ystream);
+    this.series.color = this.color;
+    this.lg.series = [this.series];
+
+    xstream.gainChanged.subscribe(this.xGainChanged);
+    this.xGainChanged(xstream.gain);
+    ystream.gainChanged.subscribe(this.yGainChanged);
+    this.yGainChanged(ystream.gain);
+
+    this.series.updated.subscribe(this.updated);
+    this._layoutChanged.subscribe(this.relayout);
+
+    this.lg.needsRedraw(true);
+  }
+
+  hidden(): void {
+    if (this.series) {
+      this.series.updated.unListen(this.updated);
+    }
+    this._layoutChanged.unListen(this.relayout);
+
+    if (this.xstream) this.xstream.gainChanged.unListen(this.xGainChanged);
+    if (this.ystream) this.ystream.gainChanged.unListen(this.yGainChanged);
+  }
+
+  private updated = (): void => {
+    this.lg.needsRedraw();
+  };
+
+  private xGainChanged = (g: number): void => {
+    this.xaxis.window(this.xaxis.min / g, this.xaxis.max / g, true);
+    this.lg.needsRedraw(true);
+  };
+
+  private yGainChanged = (g: number): void => {
+    this.yaxis.window(this.yaxis.min / g, this.yaxis.max / g, true);
+    this.lg.needsRedraw(true);
+  };
+
+  private relayout = (): void => {
+    this.lg.resized();
+  };
+}
