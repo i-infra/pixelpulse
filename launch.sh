@@ -1,12 +1,11 @@
 #!/bin/sh
 
 case "$1" in
-	local)
-	   	APPURL="http://localhost:8000/pixelpulse.html"
+	dev)
+		exec npx vite
 		;;
-	
-	edge)
-		APPURL="http://apps.nonolithlabs.com/edge/pixelpulse"
+	local)
+		APPURL="http://localhost:8000/pixelpulse.html"
 		;;
 	*)
 		APPURL="http://apps.nonolithlabs.com/pixelpulse"
