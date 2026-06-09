@@ -111,6 +111,41 @@ export function selectDropdown(opts: SelectDropdownOptions): SelectDropdown {
   return { el, select, hideDropdown };
 }
 
+export interface WaveformIconBar {
+  el: HTMLDivElement;
+  select: (option: string) => void;
+}
+
+export function waveformIconBar(
+  options: string[],
+  changed: (option: string) => void,
+): WaveformIconBar {
+  const el = document.createElement('div');
+  el.className = 'waveform-icons';
+
+  const buttons: Record<string, HTMLButtonElement> = {};
+
+  for (const option of options) {
+    const btn = document.createElement('button');
+    btn.className = `wf-icon icon-${option.toLowerCase()}`;
+    btn.title = option;
+    btn.addEventListener('click', () => {
+      select(option);
+      changed(option);
+    });
+    el.appendChild(btn);
+    buttons[option] = btn;
+  }
+
+  function select(option: string) {
+    for (const [name, btn] of Object.entries(buttons)) {
+      btn.classList.toggle('active', name === option);
+    }
+  }
+
+  return { el, select };
+}
+
 export function btnPopup(
   button: HTMLElement, popup: HTMLElement,
   opencb: () => void, closecb?: () => void,

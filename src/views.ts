@@ -15,7 +15,7 @@ import {
   TimeseriesGraphListener, TimeseriesGraph, XYGraphView,
   type StreamSelectElement,
 } from './livegraph-data-listener.js';
-import { numberWidget, selectDropdown, btnPopup, type NumberWidget } from './widgets.js';
+import { numberWidget, selectDropdown, btnPopup, waveformIconBar, type NumberWidget, type WaveformIconBar } from './widgets.js';
 import { downloadCSV } from './export.js';
 import { TypedEvent } from './dataserver.js';
 
@@ -130,6 +130,7 @@ class ChannelView {
   el: HTMLElement;
   private section: HTMLElement;
   private streamViews: StreamView[] = [];
+  private resistanceEl: HTMLDivElement;
 
   constructor(public channel: Channel, public index: number) {
     this.section = document.createElement('section');
@@ -145,6 +146,10 @@ class ChannelView {
     const h1 = document.createElement('h1');
     h1.textContent = channel.displayName;
     aside.appendChild(h1);
+
+    this.resistanceEl = document.createElement('div');
+    this.resistanceEl.className = 'resistance';
+    aside.appendChild(this.resistanceEl);
 
     let i = 0;
     for (const s of Object.values(channel.streams)) {
@@ -190,6 +195,25 @@ class ChannelView {
 
     const isLimited = sourceChannelIsOff && (measureChannelIsHiRail || measureChannelIsLoRail);
     this.section.classList.toggle('limited', isLimited);
+
+    // Resistance display: R = V / I
+    if (!isLimited && Math.abs(measureValue) > measureStream.uncertainty * 2) {
+      let voltage: number, current: number;
+      if (sourceStream.id === 'v') {
+        voltage = sourceValue;
+        current = measureValue;
+      } else {
+        voltage = measureValue;
+        current = sourceValue;
+      }
+      const r = Math.abs(voltage / current);
+      // current is in mA, voltage in V -> R = V / (mA/1000) = V*1000/mA
+      const rOhms = r * 1000;
+      this.resistanceEl.textContent = formatResistance(rOhms);
+      this.resistanceEl.style.display = '';
+    } else {
+      this.resistanceEl.style.display = 'none';
+    }
   };
 }
 
@@ -201,10 +225,11 @@ class StreamView {
 
   private valueEl: HTMLSpanElement;
   private unitSpan: HTMLSpanElement;
+  private statsEl: HTMLDivElement;
   private sourceHead: HTMLHeadingElement;
   private sourceEl: HTMLDivElement;
   private sourceModeSel: ReturnType<typeof selectDropdown>;
-  private sourceTypeSel: ReturnType<typeof selectDropdown>;
+  private sourceTypeSel: WaveformIconBar;
   private gainOpts: HTMLSelectElement | null = null;
   private sourceInputs: NumberWidget[] = [];
   private sourceType: string | null = null;
@@ -212,6 +237,7 @@ class StreamView {
   private lastValue = 0;
   private valueUnitScale = 1;
   private valueDigits = 0;
+  private isSource = false;
 
   constructor(
     public channelView: ChannelView,
@@ -244,6 +270,11 @@ class StreamView {
     reading.appendChild(this.unitSpan);
     aside.appendChild(reading);
 
+    // Stats readout (RMS, avg, min, max) for measured signals
+    this.statsEl = document.createElement('div');
+    this.statsEl.className = 'stats';
+    aside.appendChild(this.statsEl);
+
     const color = COLORS[channelView.index][index];
     this.lg = timeseries.makeGraph(stream, timeseriesDiv, color);
 
@@ -252,6 +283,9 @@ class StreamView {
       const idx = meterListener.streamIndex(stream);
       const arr = m.data[idx];
       this.onValue(arr[arr.length - 1]);
+      if (!this.isSource) {
+        this.updateStats(arr);
+      }
     });
 
     // Source controls
@@ -279,17 +313,16 @@ class StreamView {
     });
     this.sourceHead.appendChild(this.sourceModeSel.el);
 
-    this.sourceTypeSel = selectDropdown({
-      options: ['Constant', 'Square', 'Sine', 'Triangle'],
-      showText: false,
-      changed: (o) => {
+    this.sourceTypeSel = waveformIconBar(
+      ['Constant', 'Sine', 'Triangle', 'Square'],
+      (o) => {
         let src = o.toLowerCase();
         if (src === 'square' && (server.device as CEEDevice).hasAdvSquare) {
           src = 'adv_square';
         }
         stream.parent.guessSourceOptions(src);
       },
-    });
+    );
     this.sourceHead.appendChild(this.sourceTypeSel.el);
 
     this.sourceEl = document.createElement('div');
@@ -335,6 +368,32 @@ class StreamView {
     this.lastValue = val;
   }
 
+  private updateStats(arr: number[]): void {
+    if (arr.length === 0) {
+      this.statsEl.textContent = '';
+      return;
+    }
+
+    let sum = 0, sumSq = 0, mn = Infinity, mx = -Infinity;
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      sum += v;
+      sumSq += v * v;
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    const avg = sum / arr.length;
+    const rms = Math.sqrt(sumSq / arr.length);
+    const scale = this.valueUnitScale;
+    const d = Math.max(0, this.valueDigits);
+
+    this.statsEl.innerHTML =
+      `<span title="RMS">⌀${(rms / scale).toFixed(d)}</span>` +
+      `<span title="Average">μ${(avg / scale).toFixed(d)}</span>` +
+      `<span title="Min">↓${(mn / scale).toFixed(d)}</span>` +
+      `<span title="Max">↑${(mx / scale).toFixed(d)}</span>`;
+  }
+
   private sourceChanged = (m: OutputSource): void => {
     // eslint-disable-next-line eqeqeq -- server may send mode as number or string
     const isSource = m.mode == this.stream.outputMode;
@@ -352,9 +411,12 @@ class StreamView {
       }
       this.sourceModeSel.select(opt);
 
-      // Hide sourceType if not source
+      // Hide source type icons if not source
       this.sourceTypeSel.el.style.display = isSource ? '' : 'none';
     }
+
+    this.isSource = isSource;
+    this.statsEl.style.display = isSource ? 'none' : '';
 
     this.lg.sourceChanged(isSource, m);
 
@@ -487,6 +549,12 @@ class StreamView {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function formatResistance(ohms: number): string {
+  if (ohms >= 1e6) return (ohms / 1e6).toFixed(2) + ' MΩ';
+  if (ohms >= 1e3) return (ohms / 1e3).toFixed(2) + ' kΩ';
+  return ohms.toFixed(1) + ' Ω';
 }
 
 // --- Layout ---
