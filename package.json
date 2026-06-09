@@ -1,0 +1,27 @@
+{
+  "name": "pixelpulse",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nonolith/pixelpulse.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/nonolith/pixelpulse/issues"
+  },
+  "homepage": "https://github.com/nonolith/pixelpulse#readme",
+  "devDependencies": {
+    "less": "^4.6.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}
