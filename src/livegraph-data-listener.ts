@@ -457,7 +457,7 @@ type DragDotCallback = (lg: TimeseriesGraph, x: number, y: number) => void;
 
 class DragDotAction extends Action {
   private withPos: DragDotCallback;
-  private transformData: ReturnType<typeof makeTransform>;
+  protected transformData: ReturnType<typeof makeTransform>;
 
   constructor(lg: TimeseriesGraph, pos: [number, number], fn?: DragDotCallback) {
     super(lg, pos);
@@ -478,18 +478,24 @@ class DragDotAction extends Action {
 // --- DragTriggerAction ---
 
 class DragTriggerAction extends DragDotAction {
-  private y = 0;
+  private lastY = 0;
 
   constructor(lg: TimeseriesGraph, pos: [number, number]) {
     super(lg, pos, (lg, _x, y) => {
-      this.y = y;
       (lg as TimeseriesGraph).timeseries.dragTrigger(lg.stream, y);
     });
   }
 
+  override onDrag(pos: [number, number]): void {
+    super.onDrag(pos);
+    const [, uy] = invTransform(pos[0], pos[1], this.transformData);
+    const lg = this.lg as TimeseriesGraph;
+    this.lastY = Math.min(Math.max(uy, lg.stream.min), lg.stream.max);
+  }
+
   override onRelease(): void {
     const lg = this.lg as TimeseriesGraph;
-    lg.timeseries.setTrigger(lg.stream, this.y);
+    lg.timeseries.setTrigger(lg.stream, this.lastY);
   }
 }
 
