@@ -168,7 +168,8 @@ class ChannelView {
     let measureStream: Stream | undefined;
 
     for (const s of Object.values(this.channel.streams)) {
-      if (s.outputMode === source.mode) {
+      // eslint-disable-next-line eqeqeq -- server may send mode as number or string
+      if (s.outputMode == source.mode) {
         sourceStream = s;
       } else {
         measureStream = s;
@@ -207,7 +208,7 @@ class StreamView {
   private gainOpts: HTMLSelectElement | null = null;
   private sourceInputs: NumberWidget[] = [];
   private sourceType: string | null = null;
-  private lastSourceMode: string | null = null;
+  private lastSourceMode: string | number | null = null;
   private lastValue = 0;
   private valueUnitScale = 1;
   private valueDigits = 0;
@@ -264,16 +265,16 @@ class StreamView {
       options: modeOpts,
       showText: true,
       changed: (o) => {
-        let m: number;
+        let m: string | number;
         switch (o) {
           case 'Disable': m = 0; break;
-          case 'Source': m = parseInt(stream.outputMode); break;
+          case 'Source': m = stream.outputMode; break;
           case 'Measure':
             m = stream.id === 'v' ? 2 : stream.id === 'i' ? 1 : 0;
             break;
           default: m = 0;
         }
-        stream.parent.setConstant(String(m), 0);
+        stream.parent.setConstant(m, 0);
       },
     });
     this.sourceHead.appendChild(this.sourceModeSel.el);
@@ -335,14 +336,16 @@ class StreamView {
   }
 
   private sourceChanged = (m: OutputSource): void => {
-    const isSource = m.mode === this.stream.outputMode;
+    // eslint-disable-next-line eqeqeq -- server may send mode as number or string
+    const isSource = m.mode == this.stream.outputMode;
 
     if (m.mode !== this.lastSourceMode) {
       this.lastSourceMode = m.mode;
       this.sourceHead.classList.toggle('isDriving', isSource);
 
       let opt: string;
-      if (this.stream.id === 'i' && m.mode === '0') {
+      // eslint-disable-next-line eqeqeq
+      if (this.stream.id === 'i' && m.mode == 0) {
         opt = 'Disable';
       } else {
         opt = isSource ? 'Source' : 'Measure';

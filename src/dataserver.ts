@@ -96,13 +96,13 @@ export interface StreamInfo {
   units: string;
   min: number;
   max: number;
-  outputMode: string;
+  outputMode: string | number;
   gain: number;
   uncertainty: number;
 }
 
 export interface OutputSource {
-  mode: string;
+  mode: string | number;
   source: string;
   value?: number;
   offset?: number;
@@ -428,7 +428,7 @@ export class Channel {
     this.removed.notify();
   }
 
-  set(mode: string, source: string, dict: Record<string, unknown>, cb?: (s: OutputSource) => void): void {
+  set(mode: string | number, source: string, dict: Record<string, unknown>, cb?: (s: OutputSource) => void): void {
     dict['mode'] = mode;
     dict['source'] = source;
     this.setDirect(dict, cb);
@@ -472,11 +472,11 @@ export class Channel {
     this.setDirect(d);
   }
 
-  setConstant(mode: string, val: number, cb?: (s: OutputSource) => void): void {
+  setConstant(mode: string | number, val: number, cb?: (s: OutputSource) => void): void {
     this.setDirect({ mode, source: 'constant', value: val }, cb);
   }
 
-  setPeriodic(mode: string, source: string, freq: number, offset: number, amplitude: number, cb?: (s: OutputSource) => void): void {
+  setPeriodic(mode: string | number, source: string, freq: number, offset: number, amplitude: number, cb?: (s: OutputSource) => void): void {
     this.setDirect({
       mode, source,
       period: 1 / freq / this.parent.sampleTime,
@@ -547,7 +547,7 @@ export class Stream {
   units: string;
   min: number;
   max: number;
-  outputMode: string;
+  outputMode: string | number;
   gain: number;
   uncertainty: number;
   digits: number;
@@ -596,7 +596,8 @@ export class Stream {
   }
 
   isSource(): boolean {
-    return this.parent.source.mode === this.outputMode;
+    // eslint-disable-next-line eqeqeq -- server may send mode as number or string
+    return this.parent.source.mode == this.outputMode;
   }
 
   sourceLevel(): number {

@@ -744,7 +744,7 @@ export class Dot extends Overlay {
 
     // Determine visibility
     let visible = !isNaN(y) && y != null;
-    if (!this.xpos && (this.x > this.lg.xaxis.visibleMax || this.x < this.lg.xaxis.visibleMin)) {
+    if ((!this.xpos && this.x > this.lg.xaxis.visibleMax) || this.x < this.lg.xaxis.visibleMin) {
       visible = false;
     }
 
