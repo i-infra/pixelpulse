@@ -254,6 +254,7 @@ export class Device {
   makeActiveObj(parent: Dataserver): CEEDevice | BootloaderDevice {
     switch (this.model) {
       case 'com.nonolithlabs.cee':
+      case 'com.analogdevices.m1k':
         return new CEEDevice(parent);
       case 'com.nonolithlabs.bootloader':
         return new BootloaderDevice(parent);
