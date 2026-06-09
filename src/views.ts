@@ -474,7 +474,7 @@ class StreamView {
 
     const prescale = this.lg.yaxis.prescale ?? 1;
     const [unitPrefix, unitScale] = unitPrefixScale(this.lg.yaxis.span() / 2 / prescale);
-    this.unitSpan.textContent = unitPrefix + this.stream.units;
+    this.unitSpan.textContent = unitPrefix + this.lg.yaxis.unit;
     this.valueUnitScale = unitScale * prescale;
     this.valueDigits = this.stream.digits + Math.floor(Math.log(this.valueUnitScale) / Math.LN10);
     this.onValue(this.lastValue);
