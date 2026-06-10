@@ -42,6 +42,7 @@ export class PhosphorRenderer {
   private plotH = 0;
   private decay = 0.92;
   private peakAccum = 1; // auto-ranging normalizer
+  dotRadius = 1; // splat radius in pixels (0=single pixel, 1=3x3, 2=5x5)
 
   constructor(parent: HTMLElement, color: [number, number, number], insertBefore?: HTMLCanvasElement) {
     this.canvas = document.createElement('canvas');
@@ -89,33 +90,23 @@ export class PhosphorRenderer {
     const xleft = geom.xleft;
     const ytop = geom.ytop;
     const len = Math.min(xdata.length, ydata.length);
-
-    let prevPx = -1, prevPy = -1;
+    const r = this.dotRadius;
 
     for (let i = 0; i < len; i++) {
       const px = ((xdata[i] * sx + dx) - xleft) | 0;
       const py = ((ydata[i] * sy + dy) - ytop) | 0;
 
-      if (px >= 0 && px < w && py >= 0 && py < h) {
-        accum[py * w + px] += 1;
-      }
-
-      // Bresenham interpolation between consecutive points to avoid gaps
-      if (prevPx >= 0 && (Math.abs(px - prevPx) > 1 || Math.abs(py - prevPy) > 1)) {
-        const steps = Math.max(Math.abs(px - prevPx), Math.abs(py - prevPy));
-        if (steps < 200) { // sanity bound
-          const invSteps = 1 / steps;
-          for (let s = 1; s < steps; s++) {
-            const ix = (prevPx + (px - prevPx) * s * invSteps) | 0;
-            const iy = (prevPy + (py - prevPy) * s * invSteps) | 0;
-            if (ix >= 0 && ix < w && iy >= 0 && iy < h) {
-              accum[iy * w + ix] += 0.5; // interpolated hits at half weight
-            }
-          }
+      // Splat a dot of radius r centered on (px, py)
+      for (let oy = -r; oy <= r; oy++) {
+        const iy = py + oy;
+        if (iy < 0 || iy >= h) continue;
+        const row = iy * w;
+        for (let ox = -r; ox <= r; ox++) {
+          const ix = px + ox;
+          if (ix < 0 || ix >= w) continue;
+          accum[row + ix] += 1;
         }
       }
-      prevPx = px;
-      prevPy = py;
     }
   }
 

@@ -125,8 +125,8 @@ export function togglePhosphor(): void {
     }
   }
 
-  // Request 8x more data points for phosphor density
-  timeseries.phosphorOversampling = enabling ? 8 : 1;
+  // Request undecimated data for phosphor density
+  timeseries.phosphorRaw = enabling;
   timeseries.updateWindow();
 
   btn?.classList.toggle('active', enabling);
