@@ -6,6 +6,7 @@
  */
 
 import { gridLabels, logGridLabels } from './human-units.js';
+import { PhosphorRenderer } from './phosphor.js';
 
 export const PADDING = 10;
 export const AXIS_SPACING = 25;
@@ -209,6 +210,8 @@ export class GraphCanvas {
   overlays: Overlay[] = [];
   action: Action | null = null;
   renderer = '';
+  phosphor: PhosphorRenderer | null = null;
+  phosphorEnabled = false;
 
   private redrawRequested = false;
   private axisRedrawRequested = false;
@@ -445,9 +448,32 @@ export class GraphCanvas {
     this.xgridticks = Math.min(this.width / 50, 10);
     this.ygridticks = this.height / 35;
 
+    if (this.phosphor) {
+      this.phosphor.resize(this.width, this.height, this.geom);
+    }
+
     this.onResized?.();
     this.refreshViewParams();
     this.needsRedraw(true);
+  }
+
+  enablePhosphor(color: [number, number, number]): void {
+    if (!this.phosphor) {
+      this.phosphor = new PhosphorRenderer(this.div, color);
+    } else {
+      this.phosphor.setColor(color);
+    }
+    this.phosphorEnabled = true;
+    if (this.width > 0) {
+      this.phosphor.resize(this.width, this.height, this.geom);
+    }
+    this.needsRedraw();
+  }
+
+  disablePhosphor(): void {
+    this.phosphorEnabled = false;
+    this.phosphor?.clear();
+    this.needsRedraw();
   }
 
   // --- Drawing ---
@@ -582,6 +608,10 @@ export class GraphCanvas {
   };
 
   private redrawGraph(): void {
+    if (this.phosphorEnabled && this.phosphor) {
+      this.redrawPhosphor();
+    }
+
     if (this.glState) {
       this.redrawGraphWebGL();
     } else {
@@ -589,10 +619,24 @@ export class GraphCanvas {
     }
   }
 
+  private redrawPhosphor(): void {
+    if (!this.phosphor) return;
+    const [sx, sy, dx, dy] = makeTransform(this.geom, this.xaxis, this.yaxis);
+
+    for (const series of this.series) {
+      this.phosphor.scatter(
+        series.xdata, series.ydata,
+        sx, sy, dx, dy, this.geom,
+      );
+    }
+    this.phosphor.render(this.geom);
+  }
+
   private redrawGraphCanvas2D(): void {
     if (!this.ctxg) return;
     this.ctxg.clearRect(0, 0, this.width, this.height);
-    this.ctxg.lineWidth = 2;
+    this.ctxg.lineWidth = this.phosphorEnabled ? 1 : 2;
+    this.ctxg.globalAlpha = this.phosphorEnabled ? 0.3 : 1.0;
 
     const [sx, sy, dx, dy] = makeTransform(this.geom, this.xaxis, this.yaxis);
 
@@ -625,6 +669,7 @@ export class GraphCanvas {
       this.ctxg.stroke();
       this.ctxg.restore();
     }
+    this.ctxg.globalAlpha = 1.0;
   }
 
   private webglRefreshViewParams(): void {

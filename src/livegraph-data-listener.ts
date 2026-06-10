@@ -64,6 +64,7 @@ export class TimeseriesGraphListener extends DataListener {
   graphs: TimeseriesGraph[] = [];
   triggerOverlay: TriggerOverlay | null = null;
   private updatePending = false;
+  phosphorOversampling = 1; // >1 requests more data for density rendering
 
   constructor(device: CEEDevice, streams: Stream[], graphs: TimeseriesGraph[] = []) {
     super(device, streams);
@@ -102,7 +103,7 @@ export class TimeseriesGraphListener extends DataListener {
       max = Math.min(max + 0.4 * span, this.xaxis.max);
     }
 
-    const pts = lg.width / 2 * (max - min) / span;
+    const pts = lg.width / 2 * (max - min) / span * this.phosphorOversampling;
     this.configure(min, max, pts);
     this.submit();
   };

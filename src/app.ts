@@ -8,13 +8,13 @@
 import { type CEEDevice, type BootloaderDevice } from './dataserver.js';
 import { initSession, parseFlags } from './session.js';
 import {
-  initView, destroyView, toggleTrigger, autozoom, setLayout,
+  initView, destroyView, toggleTrigger, togglePhosphor, autozoom, setLayout,
   captureState, setupToolbar,
 } from './views.js';
 
 // Expose to inline onclick handlers in HTML
 Object.assign(window, {
-  pixelpulse: { setLayout, toggleTrigger, autozoom },
+  pixelpulse: { setLayout, toggleTrigger, togglePhosphor, autozoom },
 });
 
 const flags = parseFlags();

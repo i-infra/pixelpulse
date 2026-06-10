@@ -109,6 +109,27 @@ export function autozoom(): void {
   timeseries.autozoom();
 }
 
+export function togglePhosphor(): void {
+  const btn = document.getElementById('phosphorbtn');
+  const enabling = !timeseries.graphs[0]?.phosphorEnabled;
+
+  for (const lg of timeseries.graphs) {
+    if (enabling) {
+      const series = lg.series[0];
+      lg.enablePhosphor(series?.color ?? [0x32, 0x00, 0xC7]);
+    } else {
+      lg.disablePhosphor();
+    }
+  }
+
+  // Request 8x more data points for phosphor density
+  timeseries.phosphorOversampling = enabling ? 8 : 1;
+  timeseries.updateWindow();
+
+  btn?.classList.toggle('active', enabling);
+  document.body.classList.toggle('phosphor-mode', enabling);
+}
+
 captureState.subscribe(() => {
   if (!timeseries?.canChangeView()) {
     timeseries.zoomCompletelyOut(false);

@@ -202,9 +202,16 @@ body.os-mac .osspec.mac{
 	#download-btn{background: url('img/download.png');}
 	#zoomfit{background: url('img/zoomfit.png');}
 	#triggerbtn{background: url('img/trigger.png');}
-	
+	#phosphorbtn{
+		width: auto !important;
+		font-size: 11px !important;
+		padding: 0 8px;
+		opacity: 0.5;
+	}
+
 	button.active,
 	body.triggering & #triggerbtn,
+	body.phosphor-mode & #phosphorbtn,
 	body.layout-0side & #layout0, body.layout-1side & #layout1, body.layout-2side & #layout2,
 	#device-config.active{
 		opacity: 1;
@@ -329,6 +336,10 @@ body.os-mac .osspec.mac{
 	position: absolute;
 	top: 0px;
 	left: 0px;
+}
+
+.livegraph .phosphor-canvas{
+	z-index: 1;
 }
 
 .stream{
