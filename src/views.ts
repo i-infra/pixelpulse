@@ -102,6 +102,7 @@ export function toggleTrigger(): void {
   }
 
   timeseries.updateWindow();
+  updatePhosphorAccumulate();
   triggeringChanged.notify(triggering);
 }
 
@@ -112,11 +113,13 @@ export function autozoom(): void {
 export function togglePhosphor(): void {
   const btn = document.getElementById('phosphorbtn');
   const enabling = !timeseries.graphs[0]?.phosphorEnabled;
+  const accumulate = timeseries.isTriggerEnabled();
 
   for (const lg of timeseries.graphs) {
     if (enabling) {
       const series = lg.series[0];
       lg.enablePhosphor(series?.color ?? [0x32, 0x00, 0xC7]);
+      lg.phosphorAccumulate = accumulate;
     } else {
       lg.disablePhosphor();
     }
@@ -128,6 +131,16 @@ export function togglePhosphor(): void {
 
   btn?.classList.toggle('active', enabling);
   document.body.classList.toggle('phosphor-mode', enabling);
+}
+
+function updatePhosphorAccumulate(): void {
+  const accumulate = timeseries.isTriggerEnabled();
+  for (const lg of timeseries.graphs) {
+    if (lg.phosphorEnabled) {
+      lg.phosphorAccumulate = accumulate;
+      lg.phosphor?.clear();
+    }
+  }
 }
 
 captureState.subscribe(() => {

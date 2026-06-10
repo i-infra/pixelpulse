@@ -43,10 +43,14 @@ export class PhosphorRenderer {
   private decay = 0.92;
   private peakAccum = 1; // auto-ranging normalizer
 
-  constructor(parent: HTMLElement, color: [number, number, number]) {
+  constructor(parent: HTMLElement, color: [number, number, number], insertBefore?: HTMLCanvasElement) {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'phosphor-canvas';
-    parent.appendChild(this.canvas);
+    if (insertBefore) {
+      parent.insertBefore(this.canvas, insertBefore);
+    } else {
+      parent.appendChild(this.canvas);
+    }
     this.ctx = this.canvas.getContext('2d')!;
     this.colormap = buildColormap(color[0], color[1], color[2]);
   }

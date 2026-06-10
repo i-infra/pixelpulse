@@ -212,6 +212,7 @@ export class GraphCanvas {
   renderer = '';
   phosphor: PhosphorRenderer | null = null;
   phosphorEnabled = false;
+  phosphorAccumulate = false; // true in triggered mode: accumulate across sweeps
 
   private redrawRequested = false;
   private axisRedrawRequested = false;
@@ -459,7 +460,7 @@ export class GraphCanvas {
 
   enablePhosphor(color: [number, number, number]): void {
     if (!this.phosphor) {
-      this.phosphor = new PhosphorRenderer(this.div, color);
+      this.phosphor = new PhosphorRenderer(this.div, color, this.graphCanvas);
     } else {
       this.phosphor.setColor(color);
     }
@@ -621,6 +622,11 @@ export class GraphCanvas {
 
   private redrawPhosphor(): void {
     if (!this.phosphor) return;
+
+    if (!this.phosphorAccumulate) {
+      this.phosphor.clear();
+    }
+
     const [sx, sy, dx, dy] = makeTransform(this.geom, this.xaxis, this.yaxis);
 
     for (const series of this.series) {
