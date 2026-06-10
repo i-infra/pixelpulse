@@ -16,7 +16,7 @@ const LATEST_CONNECT = '1.3';
 
 export interface SessionParams {
   app: string;
-  model: string;
+  model: string | string[];
   reset: () => void;
   updateDevsMenu: (devs: Device[]) => void;
   initDevice: (device: CEEDevice | BootloaderDevice) => void;
@@ -82,7 +82,8 @@ export function initSession(sessionParams: SessionParams): void {
   });
 
   server.devicesChanged.subscribe((devices) => {
-    availDevs = devices.filter(d => d.model === params.model);
+    const models = Array.isArray(params.model) ? params.model : [params.model];
+    availDevs = devices.filter(d => models.includes(d.model));
     params.updateDevsMenu(availDevs);
 
     if (!server.device) {

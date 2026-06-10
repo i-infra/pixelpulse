@@ -289,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initSession({
     app: 'Pixelpulse Curve Tracer',
-    model: 'com.nonolithlabs.cee',
+    model: ['com.nonolithlabs.cee', 'com.analogdevices.m1k'],
     updateMessage: 'This app may not work with older versions',
 
     reset(): void {
