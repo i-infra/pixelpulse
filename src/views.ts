@@ -201,7 +201,6 @@ class ChannelView {
 
   private onValues = (m: UpdateMessage): void => {
     const source = this.channel.source;
-    if (source.source !== 'constant') return;
 
     let sourceStream: Stream | undefined;
     let measureStream: Stream | undefined;
@@ -215,7 +214,16 @@ class ChannelView {
       }
     }
 
-    if (!sourceStream || !measureStream) return;
+    // Disabled / HI_Z: no source stream matches mode 0
+    if (!sourceStream || !measureStream) {
+      this.hideResistance();
+      return;
+    }
+
+    if (source.source !== 'constant') {
+      this.updateImpedance();
+      return;
+    }
 
     const srcArr = m.data[meterListener.streamIndex(sourceStream)];
     const sourceValue = srcArr[srcArr.length - 1];
@@ -223,15 +231,21 @@ class ChannelView {
     const measArr = m.data[meterListener.streamIndex(measureStream)];
     const measureValue = measArr[measArr.length - 1];
 
-    const sourceChannelIsOff = Math.abs(sourceValue - (source.value ?? 0)) > sourceStream.uncertainty * 5;
-    const measureChannelIsHiRail = Math.abs(measureValue - measureStream.max) < measureStream.uncertainty * 5;
-    const measureChannelIsLoRail = Math.abs(measureValue - measureStream.min) < measureStream.uncertainty * 5;
+    // uncertainty alone is too tight a tolerance on the M1K (1 LSB of a
+    // 16-bit converter), so also allow a fraction of the stream's full range
+    const sourceTol = Math.max(sourceStream.uncertainty * 5, (sourceStream.max - sourceStream.min) * 0.005);
+    const railTol = Math.max(measureStream.uncertainty * 5, (measureStream.max - measureStream.min) * 0.01);
+
+    const sourceChannelIsOff = Math.abs(sourceValue - (source.value ?? 0)) > sourceTol;
+    const measureChannelIsHiRail = Math.abs(measureValue - measureStream.max) < railTol;
+    const measureChannelIsLoRail = Math.abs(measureValue - measureStream.min) < railTol;
 
     const isLimited = sourceChannelIsOff && (measureChannelIsHiRail || measureChannelIsLoRail);
     this.section.classList.toggle('limited', isLimited);
 
     // Resistance display: R = V / I
-    if (!isLimited && Math.abs(measureValue) > measureStream.uncertainty * 2) {
+    const minMeasure = Math.max(measureStream.uncertainty * 2, (measureStream.max - measureStream.min) * 1e-5);
+    if (!isLimited && Math.abs(measureValue) > minMeasure) {
       let voltage: number, current: number;
       if (sourceStream.id === 'v') {
         voltage = sourceValue;
@@ -249,6 +263,34 @@ class ChannelView {
       this.resistanceEl.style.display = 'none';
     }
   };
+
+  private hideResistance(): void {
+    this.section.classList.remove('limited');
+    this.resistanceEl.style.display = 'none';
+  }
+
+  // Waveform source: |Z| = ac RMS voltage / ac RMS current over the visible window
+  private updateImpedance(): void {
+    this.section.classList.remove('limited');
+
+    const vView = this.streamViews.find(sv => sv.stream.id === 'v');
+    const iView = this.streamViews.find(sv => sv.stream.id === 'i');
+    const vStats = vView?.windowStats();
+    const iStats = iView?.windowStats();
+
+    const iStream = iView?.stream;
+    const minCurrent = iStream
+      ? Math.max(iStream.uncertainty * 2, (iStream.max - iStream.min) * 1e-5)
+      : Infinity;
+
+    if (vStats && iStats && iStats.acrms > minCurrent) {
+      // current in mA, voltage in V -> ohms = V/mA * 1000
+      this.resistanceEl.textContent = formatResistance(vStats.acrms / iStats.acrms * 1000);
+      this.resistanceEl.style.display = '';
+    } else {
+      this.resistanceEl.style.display = 'none';
+    }
+  }
 }
 
 // --- StreamView ---
@@ -318,7 +360,7 @@ class StreamView {
       const arr = m.data[idx];
       this.onValue(arr[arr.length - 1]);
       if (!this.isSource) {
-        this.updateStats(arr);
+        this.updateStats();
       }
     });
 
@@ -369,7 +411,7 @@ class StreamView {
     }
 
     // Gain selector
-    if (stream.id === 'v') {
+    if (stream.id === 'v' && (server.device as CEEDevice).hasGain) {
       this.gainOpts = document.createElement('select');
       this.gainOpts.className = 'gainopts';
       aside.appendChild(this.gainOpts);
@@ -402,30 +444,55 @@ class StreamView {
     this.lastValue = val;
   }
 
-  private updateStats(arr: number[]): void {
-    if (arr.length === 0) {
+  // Stats over the graph's buffered samples in the visible time window.
+  // The meter listener only delivers one heavily-averaged sample per update,
+  // so min/max/RMS must come from the timeseries buffer instead.
+  windowStats(): { n: number; avg: number; rms: number; acrms: number; min: number; max: number } | null {
+    const xdata = this.lg.dseries.xdata;
+    const ydata = this.lg.dseries.ydata;
+    const [j0, j1] = timeseries.validRange();
+    const xmin = timeseries.xaxis.visibleMin;
+    const xmax = timeseries.xaxis.visibleMax;
+
+    let sum = 0, sumSq = 0, mn = Infinity, mx = -Infinity, n = 0;
+    const end = Math.min(j1, xdata.length, ydata.length);
+    for (let j = Math.max(0, j0); j < end; j++) {
+      const x = xdata[j];
+      if (x < xmin || x > xmax) continue;
+      const v = ydata[j];
+      if (isNaN(v)) continue;
+      sum += v;
+      sumSq += v * v;
+      n++;
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+
+    if (n === 0) return null;
+    const avg = sum / n;
+    const meanSq = sumSq / n;
+    return {
+      n, avg, min: mn, max: mx,
+      rms: Math.sqrt(meanSq),
+      acrms: Math.sqrt(Math.max(0, meanSq - avg * avg)),
+    };
+  }
+
+  private updateStats(): void {
+    const stats = this.windowStats();
+    if (!stats) {
       this.statsEl.textContent = '';
       return;
     }
 
-    let sum = 0, sumSq = 0, mn = Infinity, mx = -Infinity;
-    for (let i = 0; i < arr.length; i++) {
-      const v = arr[i];
-      sum += v;
-      sumSq += v * v;
-      if (v < mn) mn = v;
-      if (v > mx) mx = v;
-    }
-    const avg = sum / arr.length;
-    const rms = Math.sqrt(sumSq / arr.length);
     const scale = this.valueUnitScale;
     const d = Math.max(0, this.valueDigits);
 
     this.statsEl.innerHTML =
-      `<span title="RMS">⌀${(rms / scale).toFixed(d)}</span>` +
-      `<span title="Average">μ${(avg / scale).toFixed(d)}</span>` +
-      `<span title="Min">↓${(mn / scale).toFixed(d)}</span>` +
-      `<span title="Max">↑${(mx / scale).toFixed(d)}</span>`;
+      `<span title="RMS">⌀${(stats.rms / scale).toFixed(d)}</span>` +
+      `<span title="Average">μ${(stats.avg / scale).toFixed(d)}</span>` +
+      `<span title="Min">↓${(stats.min / scale).toFixed(d)}</span>` +
+      `<span title="Max">↑${(stats.max / scale).toFixed(d)}</span>`;
   }
 
   private sourceChanged = (m: OutputSource): void => {

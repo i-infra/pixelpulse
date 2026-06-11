@@ -133,6 +133,58 @@ function removeNull(val: string | undefined | null): string {
   return val ? val.replace(/\0/g, '') : '';
 }
 
+// Binary update frame (little-endian), mirroring stream_listener.cpp:
+//   u8   type = 1 (stream update)
+//   u8   flags: bit0 done, bit1 triggerForced, bit2 subsample valid
+//   u16  stream count
+//   u32  listener id
+//   u32  idx
+//   u32  sampleIndex
+//   f32  subsample
+//   u32  nchunks
+//   f32  data[stream count][nchunks]
+const BINARY_UPDATE_HEADER_SIZE = 24;
+
+function parseBinaryUpdate(buf: ArrayBuffer): UpdateMessage | null {
+  if (buf.byteLength < BINARY_UPDATE_HEADER_SIZE) {
+    console.error('Binary frame too short:', buf.byteLength);
+    return null;
+  }
+
+  const dv = new DataView(buf);
+  const type = dv.getUint8(0);
+  if (type !== 1) {
+    console.error('Unknown binary frame type:', type);
+    return null;
+  }
+
+  const flags = dv.getUint8(1);
+  const nstreams = dv.getUint16(2, true);
+  const id = dv.getUint32(4, true);
+  const idx = dv.getUint32(8, true);
+  const sampleIndex = dv.getUint32(12, true);
+  const subsample = dv.getFloat32(16, true);
+  const nchunks = dv.getUint32(20, true);
+
+  if (buf.byteLength < BINARY_UPDATE_HEADER_SIZE + nstreams * nchunks * 4) {
+    console.error('Binary frame truncated:', buf.byteLength, nstreams, nchunks);
+    return null;
+  }
+
+  const data: Float32Array[] = [];
+  for (let i = 0; i < nstreams; i++) {
+    data.push(new Float32Array(buf, BINARY_UPDATE_HEADER_SIZE + i * nchunks * 4, nchunks));
+  }
+
+  return {
+    _action: 'update',
+    id, idx, sampleIndex, data,
+    subsample: (flags & 4) ? subsample : (undefined as unknown as number),
+    done: !!(flags & 1),
+    triggerForced: !!(flags & 2),
+  };
+}
+
 // --- Dataserver ---
 
 export class Dataserver {
@@ -152,6 +204,7 @@ export class Dataserver {
 
   connect(): void {
     this.ws = new WebSocket(`ws://${this.host}/ws/v0`);
+    this.ws.binaryType = 'arraybuffer';
 
     this.ws.onopen = () => {
       console.log('connected');
@@ -164,6 +217,14 @@ export class Dataserver {
     };
 
     this.ws.onmessage = (evt: MessageEvent) => {
+      if (evt.data instanceof ArrayBuffer) {
+        const m = parseBinaryUpdate(evt.data);
+        if (m) {
+          this.device?.onMessage(m as unknown as ServerMessage);
+        }
+        return;
+      }
+
       let m: ServerMessage;
       try {
         m = JSON.parse(evt.data as string);
@@ -291,6 +352,7 @@ export class CEEDevice {
   minSampleTime = 1 / 40e3;
   hasOutTrigger = false;
   hasAdvSquare = false;
+  hasGain = true;
 
   constructor(public parent: Dataserver) {}
 
@@ -349,6 +411,8 @@ export class CEEDevice {
     this.listenersById = {};
     this.hasOutTrigger = this.parent.version >= '1.2' && this.fwVersion >= '1.2';
     this.hasAdvSquare = this.parent.version >= '1.2';
+    // M1K has a fixed analog frontend with no programmable gain
+    this.hasGain = this.model !== 'com.analogdevices.m1k';
 
     this.changed.notify(this);
   }
@@ -630,8 +694,9 @@ export interface UpdateMessage {
   idx: number;
   sampleIndex: number;
   subsample: number;
-  data: number[][];
+  data: (number[] | Float32Array)[];
   done: boolean;
+  triggerForced?: boolean;
 }
 
 export class Listener {
@@ -692,6 +757,7 @@ export class Listener {
       decimateFactor: this.decimateFactor,
       start: this.startSample,
       count: this.count,
+      binary: true,
     };
 
     if (this.trigger) {
@@ -741,6 +807,8 @@ export class DataListener extends Listener {
   continuous = true;
   protected len = 0;
   private subsample = 0;
+  private validCount = 0;
+  private sweepEnd = 0;
 
   constructor(device: CEEDevice, streams: Stream[]) {
     super(device, streams);
@@ -790,6 +858,8 @@ export class DataListener extends Listener {
       if (this.needsReset) {
         console.assert(this.len > 0);
         this.needsReset = false;
+        this.validCount = 0;
+        this.sweepEnd = 0;
         this.xdata = new Float32Array(this.len);
 
         for (let i = 0; i < this.len; i++) {
@@ -823,6 +893,9 @@ export class DataListener extends Listener {
       this.xdata[j] = this.xmin + j * this.sampleTime - this.subsample;
     }
 
+    this.validCount = Math.min(this.len, this.validCount + m.data[0].length);
+    this.sweepEnd = Math.max(this.sweepEnd, Math.min(endIdx, this.len));
+
     this.doneSamples = this.decimateFactor * endIdx;
 
     if (endIdx >= this.len) {
@@ -830,6 +903,16 @@ export class DataListener extends Listener {
     }
 
     super.onMessage(m);
+  }
+
+  // Index range [start, end) of this.data that has been filled with real
+  // samples; the rest of the buffer is zero-initialized padding.
+  validRange(): [number, number] {
+    if (this.xmin < 0 && !this.trigger) {
+      // Scrolling mode: data shifts left, newest samples at the end
+      return [Math.max(0, this.len - this.validCount), this.len];
+    }
+    return [0, this.sweepEnd];
   }
 }
 
