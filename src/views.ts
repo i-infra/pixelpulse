@@ -86,6 +86,10 @@ export function initView(dev: CEEDevice): void {
   if (aside) aside.style.marginBottom = `${-AXIS_SPACING + 5}px`;
   lastGraph.resized();
 
+  // Density rendering is the default: noise renders as an honest
+  // confidence band instead of an averaged line
+  setPhosphor(true);
+
   meterListener.submit();
 }
 
@@ -111,8 +115,11 @@ export function autozoom(): void {
 }
 
 export function togglePhosphor(): void {
+  setPhosphor(!timeseries.graphs[0]?.phosphorEnabled);
+}
+
+export function setPhosphor(enabling: boolean): void {
   const btn = document.getElementById('phosphorbtn');
-  const enabling = !timeseries.graphs[0]?.phosphorEnabled;
   const accumulate = timeseries.isTriggerEnabled();
 
   for (const lg of timeseries.graphs) {
@@ -139,6 +146,7 @@ function updatePhosphorAccumulate(): void {
     if (lg.phosphorEnabled) {
       lg.phosphorAccumulate = accumulate;
       lg.phosphor?.clear();
+      lg.phosphorNeedsFull = true;
     }
   }
 }
