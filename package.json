@@ -1,7 +1,7 @@
 {
   "name": "pixelpulse",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.0.0",
+  "description": "Web UI for the ADALM1000 (M1K) and Nonolith CEE source-measure units: live streaming plots with phosphor density rendering, signal sourcing, and calibration",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -13,7 +13,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "bugs": {
     "url": "https://github.com/nonolith/pixelpulse/issues"

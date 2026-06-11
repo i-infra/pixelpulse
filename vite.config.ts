@@ -3,6 +3,11 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: 'src',
+  // Relative asset paths so the build works at any mount point
+  // (GitHub Pages project sites serve from /<repo>/)
+  base: './',
+  // Static assets (icons, dsp.js, favicon) copied verbatim into dist/
+  publicDir: resolve(__dirname, 'public'),
   build: {
     outDir: '../dist',
     emptyOutDir: true,
