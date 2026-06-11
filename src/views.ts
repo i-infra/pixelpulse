@@ -30,7 +30,7 @@ const GAIN_OPTIONS = [1, 2, 4, 8, 16, 32, 64];
 
 // --- Pixelpulse state (module-level) ---
 
-export const captureState = new TypedEvent<[string]>();
+export const captureState = new TypedEvent<[boolean]>();
 export const layoutChanged = new TypedEvent();
 export const triggeringChanged = new TypedEvent<[boolean]>();
 

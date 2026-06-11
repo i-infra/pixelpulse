@@ -10,6 +10,7 @@
 
 import { TypedEvent } from './events';
 import { OutputSource } from './output-source';
+import { UsbTransport } from './usb';
 
 export class Stream {
   state = '';
@@ -130,6 +131,8 @@ export abstract class StreamingDevice {
   protected constructor(sampleTime: number) {
     this.sampleTime = sampleTime;
   }
+
+  abstract readonly usb: UsbTransport;
 
   abstract get model(): string;
   abstract get hwVersion(): string;

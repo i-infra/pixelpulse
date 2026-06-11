@@ -454,7 +454,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
     initDevice: (dev) => {
-      (dev as CEEDevice).captureStateChanged.listen((s: string) => {
+      (dev as CEEDevice).captureStateChanged.listen((s: boolean) => {
         if (!s) app.afterStop();
       });
     },

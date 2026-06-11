@@ -37,5 +37,14 @@ export type { M1KCalibration, M1KFrontend, M1KFrontendSwitch } from './m1k';
 export { BootloaderDevice } from './bootloader';
 export type { BootloaderInfo } from './bootloader';
 
+export { StreamListener, TriggerType } from './listener';
+export type {
+  StreamListenerConfig,
+  StreamUpdate,
+  TriggerConfig,
+  InStreamTriggerConfig,
+  OutSourceTriggerConfig,
+} from './listener';
+
 export { SMUSession, USB_FILTERS, isSupported, openDevice } from './session';
 export type { SMUDevice } from './session';
