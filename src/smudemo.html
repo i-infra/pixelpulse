@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SMU WebUSB demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2em; background: #111; color: #eee; }
+    button { font-size: 1em; padding: 0.4em 1em; margin-right: 0.5em; }
+    fieldset { border: 1px solid #444; margin: 1em 0; }
+    canvas { background: #000; border: 1px solid #444; display: block; margin-top: 1em; }
+    #info { color: #9c9; }
+    #error { color: #f88; }
+    .readout { font-family: ui-monospace, monospace; font-size: 1.2em; }
+    label { margin-right: 1em; }
+  </style>
+</head>
+<body>
+  <h1>SMU WebUSB demo</h1>
+  <p>Minimal test harness for the <code>src/smu/</code> library (no Pixelpulse UI).</p>
+
+  <div>
+    <button id="connect">Connect device…</button>
+    <button id="start" disabled>Start capture</button>
+    <button id="pause" disabled>Pause</button>
+  </div>
+
+  <p id="info">No device.</p>
+  <p id="error"></p>
+
+  <fieldset id="output" disabled>
+    <legend>Channel A output</legend>
+    <label>Mode:
+      <select id="mode">
+        <option value="0">Hi-Z / disabled</option>
+        <option value="1" selected>Source voltage (SVMI)</option>
+        <option value="2">Source current (SIMV)</option>
+      </select>
+    </label>
+    <label>Source:
+      <select id="source">
+        <option value="constant" selected>constant</option>
+        <option value="sine">sine</option>
+        <option value="triangle">triangle</option>
+        <option value="square">square</option>
+      </select>
+    </label>
+    <label>Level/offset: <input id="value" type="number" value="2.5" step="0.1" style="width:5em"></label>
+    <label>Amplitude: <input id="amplitude" type="number" value="1" step="0.1" style="width:5em"></label>
+    <label>Freq (Hz): <input id="freq" type="number" value="100" step="10" style="width:6em"></label>
+    <button id="apply">Apply</button>
+  </fieldset>
+
+  <p class="readout" id="readout"></p>
+
+  <canvas id="scope" width="900" height="300"></canvas>
+
+  <script type="module" src="./smudemo.ts"></script>
+</body>
+</html>
