@@ -180,6 +180,7 @@ class ChannelView {
   private section: HTMLElement;
   private streamViews: StreamView[] = [];
   private resistanceEl: HTMLDivElement;
+  private modeSel: ReturnType<typeof selectDropdown> | null = null;
 
   constructor(public channel: Channel, public index: number) {
     this.section = document.createElement('section');
@@ -207,8 +208,45 @@ class ChannelView {
       this.section.appendChild(sv.el);
     }
 
+    // M1K: one mode per channel (Hi-Z / source V / source I), selected in
+    // the channel header; the per-stream Source/Measure dropdowns are
+    // hidden. In Hi-Z the current row disappears entirely (the firmware
+    // disconnects the output amplifier — definitionally no current flows),
+    // so mode selection must live here to stay reachable.
+    if ((server.device as CEEDevice).model === 'com.analogdevices.m1k') {
+      this.modeSel = selectDropdown({
+        options: ['Hi-Z', 'Source V', 'Source I'],
+        showText: true,
+        changed: (o) => {
+          const m = o === 'Source V' ? 1 : o === 'Source I' ? 2 : 0;
+          this.channel.setConstant(m, 0);
+        },
+      });
+      this.modeSel.el.classList.add('channel-mode');
+      aside.appendChild(this.modeSel.el);
+
+      this.channel.outputChanged.subscribe(this.onModeChanged);
+      if (this.channel.source) {
+        this.onModeChanged(this.channel.source);
+      }
+    }
+
     meterListener.updated.subscribe(this.onValues);
   }
+
+  private onModeChanged = (m: OutputSource): void => {
+    const mode = Number(m.mode) || 0;
+    this.modeSel?.select(mode === 1 ? 'Source V' : mode === 2 ? 'Source I' : 'Hi-Z');
+
+    const iView = this.streamViews.find(sv => sv.stream.id === 'i');
+    if (iView) {
+      const hide = mode === 0;
+      if ((iView.el.style.display === 'none') !== hide) {
+        iView.el.style.display = hide ? 'none' : '';
+        layoutChanged.notify(); // graphs re-measure on next redraw
+      }
+    }
+  };
 
   destroy(): void {
     for (const sv of this.streamViews) sv.destroy();
@@ -403,6 +441,11 @@ class StreamView {
       },
     });
     this.sourceHead.appendChild(this.sourceModeSel.el);
+
+    // M1K: mode is selected at the channel level instead
+    if ((server.device as CEEDevice).model === 'com.analogdevices.m1k') {
+      this.sourceModeSel.el.style.display = 'none';
+    }
 
     this.sourceTypeSel = waveformIconBar(
       ['Constant', 'Sine', 'Triangle', 'Square'],

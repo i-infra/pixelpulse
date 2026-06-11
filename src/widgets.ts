@@ -65,7 +65,7 @@ export function selectDropdown(opts: SelectDropdownOptions): SelectDropdown {
     el.classList.add('icon-dropdown');
   }
 
-  const iconFor = (option: string) => `icon-${option.toLowerCase()}`;
+  const iconFor = (option: string) => `icon-${option.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   function select(option: string) {
     if (opts.showText) el.textContent = option;

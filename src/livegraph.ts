@@ -598,6 +598,10 @@ export class GraphCanvas {
 
     this.redrawRequested = false;
 
+    // Hidden (display:none) or not yet laid out: resized() bails before
+    // creating geom, and nothing can be drawn anyway
+    if (!this.geom) return;
+
     this.action?.onAnim();
 
     if (this.axisRedrawRequested) {
