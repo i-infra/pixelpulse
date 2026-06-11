@@ -32,17 +32,32 @@ function buildColormap(r: number, g: number, b: number): Uint8ClampedArray {
   return map;
 }
 
+// Intensity transfer curve: log compression of normalized accumulator
+// values. Linear scale-to-peak makes faint traces invisible whenever any
+// pixel is bright; log mapping preserves several decades of dynamic range.
+const LOG_LUT_SIZE = 2048;
+const LOG_COMPRESSION = 60;
+
+function buildLogLUT(): Uint8Array {
+  const lut = new Uint8Array(LOG_LUT_SIZE);
+  const norm = 255 / Math.log1p(LOG_COMPRESSION);
+  for (let i = 0; i < LOG_LUT_SIZE; i++) {
+    lut[i] = Math.round(Math.log1p(LOG_COMPRESSION * i / (LOG_LUT_SIZE - 1)) * norm);
+  }
+  return lut;
+}
+
 export class PhosphorRenderer {
   canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private accum: Float32Array = new Float32Array(0);
   private imgData: ImageData | null = null;
   private colormap: Uint8ClampedArray;
+  private logLUT = buildLogLUT();
   private plotW = 0;
   private plotH = 0;
   private decay = 0.92;
   private peakAccum = 1; // auto-ranging normalizer
-  dotRadius = 1; // splat radius in pixels (0=single pixel, 1=3x3, 2=5x5)
 
   constructor(parent: HTMLElement, color: [number, number, number], insertBefore?: HTMLCanvasElement) {
     this.canvas = document.createElement('canvas');
@@ -72,8 +87,33 @@ export class PhosphorRenderer {
     this.peakAccum = 1;
   }
 
+  // Bilinear deposit: distribute `energy` over the 4 pixels around the
+  // fractional position (x, y). Subpixel positioning antialiases the trace.
+  private deposit(x: number, y: number, energy: number): void {
+    const w = this.plotW;
+    const h = this.plotH;
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const fx = x - ix;
+    const fy = y - iy;
+    const accum = this.accum;
+
+    if (ix >= 0 && ix < w) {
+      if (iy >= 0 && iy < h) accum[iy * w + ix] += energy * (1 - fx) * (1 - fy);
+      if (iy + 1 >= 0 && iy + 1 < h) accum[(iy + 1) * w + ix] += energy * (1 - fx) * fy;
+    }
+    if (ix + 1 >= 0 && ix + 1 < w) {
+      if (iy >= 0 && iy < h) accum[iy * w + ix + 1] += energy * fx * (1 - fy);
+      if (iy + 1 >= 0 && iy + 1 < h) accum[(iy + 1) * w + ix + 1] += energy * fx * fy;
+    }
+  }
+
   /**
-   * Scatter sample data into the accumulation buffer.
+   * Scatter sample data into the accumulation buffer, drawing line
+   * segments between consecutive samples (like a real scope's beam).
+   * Each segment deposits constant total energy regardless of length, so
+   * fast slews are faint and dwell regions are bright — analog-style
+   * intensity grading.
    * xdata/ydata are in data-space; transform coefficients convert to pixel-space.
    */
   scatter(
@@ -86,27 +126,65 @@ export class PhosphorRenderer {
     const h = this.plotH;
     if (w <= 0 || h <= 0) return;
 
-    const accum = this.accum;
     const xleft = geom.xleft;
     const ytop = geom.ytop;
     const len = Math.min(xdata.length, ydata.length);
-    const r = this.dotRadius;
+    // Bound work on pathological segments (e.g. data discontinuities)
+    const maxSteps = 4 * (w + h);
+
+    let havePrev = false;
+    let px0 = 0, py0 = 0;
 
     for (let i = 0; i < len; i++) {
-      const px = ((xdata[i] * sx + dx) - xleft) | 0;
-      const py = ((ydata[i] * sy + dy) - ytop) | 0;
+      const px = (xdata[i] * sx + dx) - xleft;
+      const py = (ydata[i] * sy + dy) - ytop;
 
-      // Splat a dot of radius r centered on (px, py)
-      for (let oy = -r; oy <= r; oy++) {
-        const iy = py + oy;
-        if (iy < 0 || iy >= h) continue;
-        const row = iy * w;
-        for (let ox = -r; ox <= r; ox++) {
-          const ix = px + ox;
-          if (ix < 0 || ix >= w) continue;
-          accum[row + ix] += 1;
-        }
+      if (isNaN(px) || isNaN(py)) {
+        havePrev = false;
+        continue;
       }
+
+      if (!havePrev) {
+        this.deposit(px, py, 1);
+        havePrev = true;
+        px0 = px;
+        py0 = py;
+        continue;
+      }
+
+      const segDx = px - px0;
+      const segDy = py - py0;
+      // Skip segments entirely outside the plot
+      if ((px < 0 && px0 < 0) || (px >= w && px0 >= w)
+        || (py < 0 && py0 < 0) || (py >= h && py0 >= h)) {
+        px0 = px;
+        py0 = py;
+        continue;
+      }
+
+      let steps = Math.ceil(Math.max(Math.abs(segDx), Math.abs(segDy)));
+      if (steps < 1) steps = 1;
+      if (steps > maxSteps) steps = maxSteps;
+
+      // Exclude the endpoint: it is deposited as the start of the next segment
+      const energy = 1 / steps;
+      const stepX = segDx / steps;
+      const stepY = segDy / steps;
+      let x = px0;
+      let y = py0;
+      for (let s = 0; s < steps; s++) {
+        this.deposit(x, y, energy);
+        x += stepX;
+        y += stepY;
+      }
+
+      px0 = px;
+      py0 = py;
+    }
+
+    // Deposit the final endpoint so the newest sample is visible
+    if (havePrev) {
+      this.deposit(px0, py0, 1);
     }
   }
 
@@ -130,12 +208,15 @@ export class PhosphorRenderer {
     }
     // Smooth peak tracking to avoid flicker
     this.peakAccum = Math.max(1, this.peakAccum * 0.98, peak * 0.5);
-    const scale = 255 / this.peakAccum;
+
+    const lut = this.logLUT;
+    const lutScale = (LOG_LUT_SIZE - 1) / this.peakAccum;
 
     for (let i = 0; i < accum.length; i++) {
-      // Map accumulator to 0-255 colormap index
-      const ci = Math.min(255, (accum[i] * scale) | 0);
-      const co = ci * 4;
+      // Normalize, then log-compress via LUT to a 0-255 colormap index
+      let li = (accum[i] * lutScale) | 0;
+      if (li >= LOG_LUT_SIZE) li = LOG_LUT_SIZE - 1;
+      const co = lut[li] * 4;
       const po = i * 4;
       pixels[po] = cmap[co];
       pixels[po + 1] = cmap[co + 1];
