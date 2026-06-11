@@ -5,11 +5,16 @@ source-measure units: live streaming plots with analog-style phosphor density
 rendering, waveform sourcing, triggering, measurements, and device calibration —
 all in the browser.
 
-Pixelpulse is a static web app. It talks to a small local dataserver
-([nonolith-connect](https://github.com/nonolith/connect), with M1K support)
-over a WebSocket on `localhost:9003`; the page itself can be served from
-anywhere, including GitHub Pages — browsers permit `ws://localhost`
-connections even from `https://` origins.
+Pixelpulse is a static web app with two interchangeable device backends:
+
+- **WebUSB** (default in Chromium-based browsers): in-browser device
+  drivers — plug in the device, click "Connect USB device…", done. No
+  install, no daemon.
+- **WebSocket**: the [nonolith-connect](https://github.com/nonolith/connect)
+  daemon (with M1K support) on `localhost:9003` — for multi-client sharing,
+  remote (LAN) operation, and non-WebUSB browsers. Force it with `#connect`
+  (or `?server=host:port`); browsers permit `ws://localhost` connections
+  even from `https://` origins, so this works from GitHub Pages too.
 
 ## Features
 
@@ -20,8 +25,9 @@ connections even from `https://` origins.
   count — noise renders as an honest confidence band, dwell shows as
   intensity grading, like an analog scope. Scrolls in real time; triggered
   sweeps accumulate with wall-clock persistence
-- **Binary WebSocket streaming**: sample data moves as raw float32 frames,
-  not JSON
+- **Runs entirely in the browser** via WebUSB, or against the
+  nonolith-connect daemon over a binary WebSocket protocol (raw float32
+  frames, not JSON)
 - **Signal sourcing**: constant, sine, triangle, square with on-graph drag
   handles for offset, amplitude, and period
 - **Output-phase triggering** aligned to the observed waveform within a sample
@@ -38,15 +44,18 @@ connections even from `https://` origins.
 
 ## Quick start
 
-1. Build and run the dataserver (see the connect repository); it serves
-   `ws://localhost:9003` and needs exclusive USB access to the device
-2. Serve this app:
-   ```sh
-   npm install
-   npm run dev        # development server on http://localhost:8000
-   ```
-   or use a hosted build — the app runs entirely client-side
-3. Open `pixelpulse.html`
+In a Chromium-based browser, open the hosted app, plug in the device, and
+click **Connect USB device…** — that's it.
+
+For development, or to use the WebSocket backend:
+
+```sh
+npm install
+npm run dev        # development server on http://localhost:8000
+```
+
+then open `pixelpulse.html` (append `#connect` to use a running
+nonolith-connect daemon instead of WebUSB).
 
 ## Pages
 
@@ -86,10 +95,13 @@ mount point.
 
 Pixelpulse was created by [Nonolith Labs](http://nonolithlabs.com)
 (Kevin Mehall) as the CoffeeScript web UI for the CEE. This is a modernized
-relaunch: ported to TypeScript/Vite, with ADALM1000 support, binary
-streaming, phosphor rendering, and in-browser M1K calibration.
+relaunch by [@i-infra](https://github.com/i-infra): ported to
+TypeScript/Vite, with ADALM1000 support, in-browser WebUSB drivers, binary
+streaming, phosphor density rendering, and guided M1K calibration.
 
 ## License
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).
-(C) 2011 Nonolith Labs, LLC and contributors.
+
+(C) 2011 Nonolith Labs, LLC ·
+(C) 2026 [@i-infra](https://github.com/i-infra) and contributors.
