@@ -209,6 +209,13 @@ body.os-mac .osspec.mac{
 		opacity: 0.5;
 	}
 
+	#m1k-extras{
+		width: 32px;
+		font-size: 20px !important;
+		line-height: 1;
+		opacity: 0.5;
+	}
+
 	button.active,
 	body.triggering & #triggerbtn,
 	body.phosphor-mode & #phosphorbtn,
@@ -756,3 +763,32 @@ body.layout-2side{
   }
 }
 
+
+#m1k-extras-popup{
+	.term-row{
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin: 4px 0;
+
+		span{
+			width: 40px;
+			font-size: 12px;
+		}
+
+		button{
+			padding: 2px 10px;
+
+			&.active{
+				background: #0064cd;
+				color: white;
+			}
+		}
+	}
+
+	#vbus-reading{
+		font-family: ui-monospace, Menlo, monospace;
+		font-size: 12px;
+		margin: 4px 0;
+	}
+}

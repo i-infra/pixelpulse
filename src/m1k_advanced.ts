@@ -5,6 +5,7 @@
  */
 
 import { server, type CEEDevice } from './dataserver.js';
+import { readVBUS } from './m1k-power.js';
 
 // --- Helpers ---
 
@@ -26,37 +27,31 @@ let autoRefreshOn = false;
 let frontendLoaded = false; // don't send changes until first read completes
 let ledsLoaded = false;
 
-// --- VBUS readback via controlTransfer (ADM1177, vendor request 0x17) ---
+// --- VBUS readback (shared ADM1177 helper) ---
 
-function readVBUS(): void {
+function refreshVBUS(): void {
   if (!device) return;
-  device.controlTransfer(0xC0, 0x17, 0, 3, [], 3, (m) => {
-    const data = (m as Record<string, unknown>).data as number[];
-    if (!data || data.length < 3) {
+  void readVBUS(device).then((r) => {
+    if (!r) {
       setText('pwr-vbus-v', 'Error');
       setText('pwr-vbus-i', 'Error');
       return;
     }
-    const rawV = (data[0] << 4) | (data[2] >> 4);
-    const rawI = (data[1] << 4) | (data[2] & 0x0F);
-    const voltage = rawV * 6.65 / 4096;
-    const current = rawI * 105.84 / 4096;
-
     const vEl = el('pwr-vbus-v');
-    vEl.textContent = voltage.toFixed(3) + ' V';
+    vEl.textContent = r.voltage.toFixed(3) + ' V';
     vEl.className = '';
-    if (voltage >= 4.5) {
+    if (r.voltage >= 4.5) {
       vEl.classList.add('status-green');
-    } else if (voltage >= 4.0) {
+    } else if (r.voltage >= 4.0) {
       vEl.classList.add('status-yellow');
     } else {
       vEl.classList.add('status-red');
     }
 
-    setText('pwr-vbus-i', current.toFixed(2) + ' mA');
+    setText('pwr-vbus-i', r.currentMA.toFixed(1) + ' mA');
 
     const warning = el('power-warning');
-    warning.style.display = voltage < 4.0 ? '' : 'none';
+    warning.style.display = r.voltage < 4.0 ? '' : 'none';
   });
 }
 
@@ -71,7 +66,7 @@ function refreshPower(): void {
     setText('pwr-alert', power.alert_bit ? 'YES' : 'No');
   });
   server.send('getPower', { id });
-  readVBUS();
+  refreshVBUS();
 }
 
 // --- getTemperature ---

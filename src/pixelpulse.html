@@ -67,6 +67,7 @@ Run <code>sudo /etc/init.d/nonolith-connect start</code> in a terminal to start 
   <div id="toolbar-right">
     <button id="download-btn" title="Export data">Export</button>
     <button id="device-config" title="Configure device">Configure</button>
+    <button id="m1k-extras" title="Input termination &amp; bus power" style="display:none">+</button>
   </div>
   <div id="device-info">
     <button id="switchDev">Switch</button>
@@ -89,6 +90,24 @@ Run <code>sudo /etc/init.d/nonolith-connect start</code> in a terminal to start 
   <div id="config-will-reset">Applying these settings will clear collected data</div>
   <button id="device-config-apply">Apply</button>
   </div>
+</section>
+
+<section id="m1k-extras-popup" class="popup-dialog">
+  <label>50&Omega; Input Termination</label>
+  <div class="term-row">
+    <span>CH A</span>
+    <button data-ch="a" data-term="off">Off</button>
+    <button data-ch="a" data-term="2v5">2.5 V</button>
+    <button data-ch="a" data-term="gnd">GND</button>
+  </div>
+  <div class="term-row">
+    <span>CH B</span>
+    <button data-ch="b" data-term="off">Off</button>
+    <button data-ch="b" data-term="2v5">2.5 V</button>
+    <button data-ch="b" data-term="gnd">GND</button>
+  </div>
+  <label>USB Bus Power</label>
+  <div id="vbus-reading">&mdash;</div>
 </section>
 
 <div id="perfstat"></div>

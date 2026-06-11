@@ -18,6 +18,7 @@ import {
 import { numberWidget, selectDropdown, btnPopup, waveformIconBar, type NumberWidget, type WaveformIconBar } from './widgets.js';
 import { downloadCSV } from './export.js';
 import { TypedEvent } from './dataserver.js';
+import { readVBUS } from './m1k-power.js';
 
 // --- Colors ---
 
@@ -89,6 +90,12 @@ export function initView(dev: CEEDevice): void {
   // Density rendering is the default: noise renders as an honest
   // confidence band instead of an averaged line
   setPhosphor(true);
+
+  // M1K-only toolbar extras (input termination switches, VBUS power)
+  const extrasBtn = document.getElementById('m1k-extras');
+  if (extrasBtn) {
+    extrasBtn.style.display = dev.model === 'com.analogdevices.m1k' ? '' : 'none';
+  }
 
   meterListener.submit();
 }
@@ -728,6 +735,67 @@ export function setupToolbar(): void {
         opt.style.display = parseFloat(opt.value) >= dev.minSampleTime ? '' : 'none';
       }
       rateSelect.value = String(dev.sampleTime);
+    });
+  }
+
+  // M1K extras popup: 50R input termination + VBUS power readout
+  const extrasBtn = document.getElementById('m1k-extras');
+  const extrasPopup = document.getElementById('m1k-extras-popup');
+  if (extrasBtn && extrasPopup) {
+    const termButtons = Array.from(
+      extrasPopup.querySelectorAll<HTMLButtonElement>('button[data-term]'),
+    );
+
+    const setTermUI = (ch: string, term: string): void => {
+      for (const b of termButtons) {
+        if (b.dataset.ch === ch) {
+          b.classList.toggle('active', b.dataset.term === term);
+        }
+      }
+    };
+
+    for (const b of termButtons) {
+      b.addEventListener('click', () => {
+        const ch = b.dataset.ch!;
+        const term = b.dataset.term!;
+        server.send('setFrontend', {
+          channel: ch,
+          r50_2v5: term === '2v5',
+          r50_gnd: term === 'gnd',
+          id: server.createCallback(() => setTermUI(ch, term)),
+        });
+      });
+    }
+
+    const vbusEl = document.getElementById('vbus-reading')!;
+    let vbusTimer: ReturnType<typeof setInterval> | null = null;
+    const pollVBUS = async (): Promise<void> => {
+      const r = await readVBUS(server.device as CEEDevice);
+      vbusEl.textContent = r
+        ? `${r.voltage.toFixed(3)} V · ${r.currentMA.toFixed(1)} mA`
+        : 'read error';
+    };
+
+    btnPopup(extrasBtn, extrasPopup, () => {
+      server.send('getFrontend', {
+        id: server.createCallback((d) => {
+          const fe = (d as Record<string, unknown>).frontend as
+            Record<string, Record<string, unknown>> | undefined;
+          for (const ch of ['a', 'b']) {
+            const c = fe?.[ch];
+            if (!c) continue;
+            setTermUI(ch, c.r50_2v5 ? '2v5' : c.r50_gnd ? 'gnd' : 'off');
+          }
+        }),
+      });
+      vbusEl.textContent = '…';
+      void pollVBUS();
+      vbusTimer = setInterval(pollVBUS, 2000);
+    }, () => {
+      if (vbusTimer !== null) {
+        clearInterval(vbusTimer);
+        vbusTimer = null;
+      }
     });
   }
 
