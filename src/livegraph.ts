@@ -802,19 +802,22 @@ export class Dot extends Overlay {
     const v = visible ? 'visible' : 'hidden';
     if (this.dot.style.visibility !== v) this.dot.style.visibility = v;
 
+    // Clamp only the drawn position; this.y keeps the data-space coordinate
+    // so later repositioning (zoom, resize) doesn't inherit the clamp
     let shape: string;
-    if (this.y > this.lg.yaxis.visibleMax) {
-      this.y = this.lg.yaxis.visibleMax;
+    let drawY = this.y;
+    if (drawY > this.lg.yaxis.visibleMax) {
+      drawY = this.lg.yaxis.visibleMax;
       shape = 'up';
-    } else if (this.y < this.lg.yaxis.visibleMin) {
-      this.y = this.lg.yaxis.visibleMin;
+    } else if (drawY < this.lg.yaxis.visibleMin) {
+      drawY = this.lg.yaxis.visibleMin;
       shape = 'down';
     } else {
       shape = 'circle';
     }
 
     const [sx, sy, dx, dy] = makeTransform(this.lg.geom, this.lg.xaxis, this.lg.yaxis);
-    this.ty = Math.round(dy + this.y * sy);
+    this.ty = Math.round(dy + drawY * sy);
 
     if (this.shape !== shape) {
       this.shape = shape;

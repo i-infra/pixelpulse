@@ -335,7 +335,10 @@ export class TimeseriesGraph extends GraphCanvas {
       });
     } else if (this.dotConfig === 'wave' && this.dots.period?.isNear(x, y, 10)) {
       new DragDotAction(this, pos, (lg, x, y) => {
-        const amplitude = y - (lg.stream.parent.source.offset ?? 0);
+        // Clamp at zero: dragging below the offset would silently set a
+        // negative amplitude, inverting the waveform's phase relative to
+        // the drag handles
+        const amplitude = Math.max(0, y - (lg.stream.parent.source.offset ?? 0));
         const period = Math.max(5, x * 4 / (server.device as CEEDevice).sampleTime);
         lg.stream.parent.setAdjust({ amplitude, period });
       });
