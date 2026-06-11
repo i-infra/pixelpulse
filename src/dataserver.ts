@@ -853,7 +853,11 @@ export class DataListener extends Listener {
   override onMessage(m: UpdateMessage): void {
     if (m.idx === 0) {
       // sweepStartSample available if needed: m.sampleIndex
-      this.subsample = (m.subsample + 2.0) * this.device.sampleTime || 0;
+      // CEE's ADC pipeline reports trigger positions 2 samples early; the
+      // M1K's captured data is phase-aligned as-is (measured ≤0.3 samples).
+      // 2 samples is 72° of phase at 10 kHz, so this must be per-device.
+      const pipeline = this.device.model === 'com.analogdevices.m1k' ? 0 : 2.0;
+      this.subsample = (m.subsample + pipeline) * this.device.sampleTime || 0;
 
       if (this.needsReset) {
         console.assert(this.len > 0);
