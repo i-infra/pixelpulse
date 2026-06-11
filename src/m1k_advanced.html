@@ -1,0 +1,180 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>M1K Advanced Features</title>
+<style>
+/* Reset + base (inline rather than wizard.css — dashboard layout, not wizard steps) */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.4; background: #eee; }
+article { max-width: 860px; margin: 24px auto; background: #fff; border-radius: 8px; border: 1px solid #999; box-shadow: 2px 2px 12px rgba(0,0,0,0.2); padding: 0 0 24px 0; overflow: auto; }
+section { padding: 16px 32px; border-bottom: 1px solid #e0e0e0; }
+section:last-child { border-bottom: none; }
+section > h1 { font-size: 22px; font-weight: bold; color: #555; margin-bottom: 12px; letter-spacing: 0.02em; }
+h2 { font-weight: bold; font-size: 16px; margin-bottom: 6px; }
+h3 { font-weight: bold; font-size: 14px; margin-bottom: 6px; }
+p { margin: 4px 0; }
+a { color: #0064cd; }
+nav { margin-top: 10px; }
+
+/* Buttons (same visual as wizard.css .btn) */
+.btn { display: inline-block; padding: 5px 14px; font-size: 13px; line-height: normal; border: 1px solid #ccc; border-bottom-color: #bbb; border-radius: 4px; background: linear-gradient(#fff, #e6e6e6); color: #333; cursor: pointer; text-shadow: 0 1px 1px rgba(255,255,255,0.75); box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.05); transition: 0.1s linear; }
+.btn:hover { background-position: 0 -15px; }
+.btn.primary { color: #fff; background: linear-gradient(#049cdb, #0064cd); border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); text-shadow: 0 -1px 0 rgba(0,0,0,0.25); }
+.btn.success { color: #fff; background: linear-gradient(#62c462, #57a957); border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); text-shadow: 0 -1px 0 rgba(0,0,0,0.25); }
+.btn.info { color: #fff; background: linear-gradient(#5bc0de, #339bb9); border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); text-shadow: 0 -1px 0 rgba(0,0,0,0.25); }
+.btn.danger { color: #fff; background: linear-gradient(#ee5f5b, #c43c35); border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25); text-shadow: 0 -1px 0 rgba(0,0,0,0.25); }
+
+/* Status badges */
+.status-green { color: #fff; background: #28a745; padding: 2px 8px; border-radius: 3px; display: inline-block; }
+.status-yellow { color: #000; background: #ffc107; padding: 2px 8px; border-radius: 3px; display: inline-block; }
+.status-red { color: #fff; background: #dc3545; padding: 2px 8px; border-radius: 3px; display: inline-block; }
+.warning-banner { background: #dc3545; color: #fff; padding: 10px 16px; border-radius: 4px; margin: 8px 0; display: none; font-weight: bold; }
+
+/* Tables */
+table { border-collapse: collapse; margin: 8px 0; }
+table td, table th { padding: 4px 12px; text-align: left; border-bottom: 1px solid #ddd; }
+table th { font-weight: bold; background: #f5f5f5; }
+
+/* Controls */
+.toggle-group { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.toggle-group label { min-width: 120px; font-size: 13px; }
+.slider-group { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.slider-group label { min-width: 80px; font-size: 13px; }
+.slider-group input[type="range"] { width: 200px; }
+.slider-group .val { min-width: 40px; text-align: right; font-family: monospace; }
+.channel-block { border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin: 8px 0; }
+.channel-block h3 { margin-top: 0; }
+.channels-row { display: flex; gap: 16px; }
+.channels-row .channel-block { flex: 1; }
+
+/* LEDs */
+.led-btns { display: flex; gap: 8px; margin: 8px 0; }
+.led-btn { min-width: 80px; }
+.led-btn.active-red { background: #dc3545 !important; color: #fff; }
+.led-btn.active-green { background: #28a745 !important; color: #fff; }
+.led-btn.active-blue { background: #007bff !important; color: #fff; }
+
+/* Calibration */
+.mono { font-family: monospace; }
+#cal-table td { font-family: monospace; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<article>
+
+<!-- Device Info -->
+<section id="sec-device">
+  <h1>M1K Advanced Features</h1>
+  <div id="no-connect" style="display:none;">
+    <h2>Nonolith Connect not found</h2>
+    <p>Make sure <a href="http://www.nonolithlabs.com/connect">Nonolith Connect</a> is running.</p>
+  </div>
+  <div id="no-device" style="display:none;">
+    <h2>No M1K device found</h2>
+    <p>Plug in an M1K to start.</p>
+  </div>
+  <div id="device-info" style="display:none;">
+    <h2>Device Info</h2>
+    <table>
+      <tr><td>Model</td><td id="dev-model"></td></tr>
+      <tr><td>Hardware Version</td><td id="dev-hw"></td></tr>
+      <tr><td>Firmware Version</td><td id="dev-fw"></td></tr>
+      <tr><td>Serial Number</td><td id="dev-serial"></td></tr>
+    </table>
+    <nav>
+      <button class="btn primary" id="btn-refresh-all">Refresh All</button>
+      <button class="btn info" id="btn-auto-refresh">Auto-Refresh: OFF</button>
+    </nav>
+  </div>
+</section>
+
+<!-- Power Monitor -->
+<section id="sec-power">
+  <h1>Power Monitor</h1>
+  <div id="power-warning" class="warning-banner">Bad USB adapter detected — try a different cable/adapter</div>
+  <table>
+    <tr><td>VBUS Voltage</td><td id="pwr-vbus-v">--</td></tr>
+    <tr><td>VBUS Current</td><td id="pwr-vbus-i">--</td></tr>
+    <tr><td>Overcurrent</td><td id="pwr-overcurrent">--</td></tr>
+    <tr><td>Power Status (raw)</td><td id="pwr-status-raw" class="mono">--</td></tr>
+    <tr><td>Alert Bit</td><td id="pwr-alert">--</td></tr>
+  </table>
+  </table>
+</section>
+
+<!-- Temperature -->
+<section id="sec-temp">
+  <h1>Temperature</h1>
+  <table>
+    <tr><td>Channel A (raw ADC)</td><td id="temp-a">--</td></tr>
+    <tr><td>Channel B (raw ADC)</td><td id="temp-b">--</td></tr>
+  </table>
+  <nav>
+    <button class="btn danger" id="btn-refresh-power">Read Temperature from ADC</button>
+    <p style="margin-top:6px;font-size:12px;color:#888;">Reconfigures AD7682 — will disrupt streaming if capture is active.</p>
+  </nav>
+</section>
+
+<!-- Analog Front-End -->
+<section id="sec-frontend">
+  <h1>Analog Front-End</h1>
+  <div class="channels-row">
+    <div id="fe-ch-a" class="channel-block">
+      <h3>Channel A</h3>
+      <div class="toggle-group"><label>50R to 2.5V</label><button class="btn" id="fe-a-r50_2v5">--</button></div>
+      <div class="toggle-group"><label>50R to GND</label><button class="btn" id="fe-a-r50_gnd">--</button></div>
+      <div class="toggle-group"><label>Feedback</label><button class="btn" id="fe-a-feedback">--</button></div>
+      <div class="toggle-group"><label>Output Enable</label><button class="btn" id="fe-a-output_en">--</button></div>
+      <div class="toggle-group"><label>Split</label><button class="btn" id="fe-a-split">--</button></div>
+      <div class="slider-group"><label>Pot R1</label><input type="range" min="0" max="127" value="0" id="fe-a-pot_r1"><span class="val" id="fe-a-pot_r1-val">0</span></div>
+      <div class="slider-group"><label>Pot R2</label><input type="range" min="0" max="127" value="0" id="fe-a-pot_r2"><span class="val" id="fe-a-pot_r2-val">0</span></div>
+    </div>
+    <div id="fe-ch-b" class="channel-block">
+      <h3>Channel B</h3>
+      <div class="toggle-group"><label>50R to 2.5V</label><button class="btn" id="fe-b-r50_2v5">--</button></div>
+      <div class="toggle-group"><label>50R to GND</label><button class="btn" id="fe-b-r50_gnd">--</button></div>
+      <div class="toggle-group"><label>Feedback</label><button class="btn" id="fe-b-feedback">--</button></div>
+      <div class="toggle-group"><label>Output Enable</label><button class="btn" id="fe-b-output_en">--</button></div>
+      <div class="toggle-group"><label>Split</label><button class="btn" id="fe-b-split">--</button></div>
+      <div class="slider-group"><label>Pot R1</label><input type="range" min="0" max="127" value="0" id="fe-b-pot_r1"><span class="val" id="fe-b-pot_r1-val">0</span></div>
+      <div class="slider-group"><label>Pot R2</label><input type="range" min="0" max="127" value="0" id="fe-b-pot_r2"><span class="val" id="fe-b-pot_r2-val">0</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- LEDs -->
+<section id="sec-leds">
+  <h1>LEDs</h1>
+  <div class="led-btns">
+    <button class="btn led-btn" id="led-red">Red</button>
+    <button class="btn led-btn" id="led-green">Green</button>
+    <button class="btn led-btn" id="led-blue">Blue</button>
+  </div>
+  <p>Raw bitmask: <span class="mono" id="led-raw">--</span></p>
+</section>
+
+<!-- Calibration -->
+<section id="sec-cal">
+  <h1>Calibration</h1>
+  <p>Valid: <span id="cal-valid">--</span></p>
+  <table id="cal-table">
+    <tr>
+      <th>Index</th><th>Channel</th><th>Offset</th><th>Gain+</th><th>Gain-</th>
+    </tr>
+    <tr><td>0</td><td>ChA meas V</td><td id="cal-off-0">--</td><td id="cal-gp-0">--</td><td id="cal-gn-0">--</td></tr>
+    <tr><td>1</td><td>ChA meas I</td><td id="cal-off-1">--</td><td id="cal-gp-1">--</td><td id="cal-gn-1">--</td></tr>
+    <tr><td>2</td><td>ChA src V</td><td id="cal-off-2">--</td><td id="cal-gp-2">--</td><td id="cal-gn-2">--</td></tr>
+    <tr><td>3</td><td>ChA src I</td><td id="cal-off-3">--</td><td id="cal-gp-3">--</td><td id="cal-gn-3">--</td></tr>
+    <tr><td>4</td><td>ChB meas V</td><td id="cal-off-4">--</td><td id="cal-gp-4">--</td><td id="cal-gn-4">--</td></tr>
+    <tr><td>5</td><td>ChB meas I</td><td id="cal-off-5">--</td><td id="cal-gp-5">--</td><td id="cal-gn-5">--</td></tr>
+    <tr><td>6</td><td>ChB src V</td><td id="cal-off-6">--</td><td id="cal-gp-6">--</td><td id="cal-gn-6">--</td></tr>
+    <tr><td>7</td><td>ChB src I</td><td id="cal-off-7">--</td><td id="cal-gp-7">--</td><td id="cal-gn-7">--</td></tr>
+  </table>
+</section>
+
+</article>
+<div id="logo"></div>
+<script type="module" src="./m1k_advanced.ts"></script>
+</body>
+</html>
