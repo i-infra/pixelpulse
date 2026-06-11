@@ -6,7 +6,7 @@
 
 import {
   type Device, type CEEDevice, type BootloaderDevice,
-  server, webusbSupported,
+  server,
 } from './dataserver.js';
 
 const LATEST_FIRMWARE = '1.2';
@@ -66,11 +66,8 @@ function hideChildren(el: HTMLElement | null): void {
 export function initSession(sessionParams: SessionParams): void {
   params = sessionParams;
 
-  if (!webusbSupported()) {
-    overlay(`${params.app} requires WebUSB, which is available in Chromium-based browsers (Chrome, Edge, Brave, Opera)`);
-    return;
-  }
-
+  // Backend (WebUSB or WebSocket/Connect) was chosen by dataserver.ts;
+  // browsers without WebUSB automatically fall back to the daemon.
   server.connect();
 
   server.disconnected.subscribe(() => {
