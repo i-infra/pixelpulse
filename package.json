@@ -9,14 +9,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nonolith/pixelpulse.git"
+    "url": "git+https://github.com/i-infra/pixelpulse.git"
   },
   "keywords": [],
   "author": "i-infra",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "bugs": {
-    "url": "https://github.com/nonolith/pixelpulse/issues"
+    "url": "https://github.com/i-infra/pixelpulse/issues"
   },
   "homepage": "https://github.com/nonolith/pixelpulse#readme",
   "devDependencies": {

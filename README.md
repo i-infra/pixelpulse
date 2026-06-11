@@ -86,7 +86,7 @@ documented in the connect repository's `WS_API.md`.
 
 ## Deploying
 
-Pushes to `master` deploy automatically to GitHub Pages via
+Pushes to `main` deploy automatically to GitHub Pages via
 `.github/workflows/deploy.yml` (set the repository's Pages source to
 "GitHub Actions"). The build uses relative asset paths, so it works from any
 mount point.
