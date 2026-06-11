@@ -66,11 +66,8 @@ function hideChildren(el: HTMLElement | null): void {
 export function initSession(sessionParams: SessionParams): void {
   params = sessionParams;
 
-  if (!window.WebSocket) {
-    overlay(`${params.app} requires WebSockets and currently only works in Chrome and Safari`);
-    return;
-  }
-
+  // Backend (WebUSB or WebSocket/Connect) was chosen by dataserver.ts;
+  // browsers without WebUSB automatically fall back to the daemon.
   server.connect();
 
   server.disconnected.subscribe(() => {

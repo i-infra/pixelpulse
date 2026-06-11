@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
     initDevice(dev: CEEDevice | BootloaderDevice) {
-      (dev as CEEDevice).captureStateChanged?.subscribe((s: string) => {
+      (dev as CEEDevice).captureStateChanged?.subscribe((s: boolean) => {
         captureState.notify(s);
       });
     },

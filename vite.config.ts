@@ -23,6 +23,7 @@ export default defineConfig({
         setup: resolve(__dirname, 'src/setup.html'),
         m1k_advanced: resolve(__dirname, 'src/m1k_advanced.html'),
         m1k_calibrate: resolve(__dirname, 'src/m1k_calibrate.html'),
+        smudemo: resolve(__dirname, 'src/smudemo.html'),
       },
     },
   },

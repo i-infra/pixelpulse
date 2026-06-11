@@ -306,7 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDevice(dev): void {
       const ceeDevice = dev as CEEDevice;
       ceeDevice.pauseCapture();
-      ceeDevice.captureStateChanged.listen((s: string) => {
+      ceeDevice.captureStateChanged.listen((s: boolean) => {
         if (!s) app.afterStop();
       });
     },
