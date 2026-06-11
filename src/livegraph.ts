@@ -213,6 +213,9 @@ export class GraphCanvas {
   phosphor: PhosphorRenderer | null = null;
   phosphorEnabled = false;
   phosphorAccumulate = false; // true in triggered mode: accumulate across sweeps
+  phosphorNeedsFull = true; // full re-scatter required (transform/buffer change)
+  protected phosphorTransform: [number, number, number, number] | null = null;
+  protected phosphorShiftCarry = 0; // fractional scroll-shift remainder (px)
 
   private redrawRequested = false;
   private axisRedrawRequested = false;
@@ -451,6 +454,7 @@ export class GraphCanvas {
 
     if (this.phosphor) {
       this.phosphor.resize(this.width, this.height, this.geom);
+      this.phosphorNeedsFull = true;
     }
 
     this.onResized?.();
@@ -465,6 +469,7 @@ export class GraphCanvas {
       this.phosphor.setColor(color);
     }
     this.phosphorEnabled = true;
+    this.phosphorNeedsFull = true;
     if (this.width > 0) {
       this.phosphor.resize(this.width, this.height, this.geom);
     }
@@ -623,19 +628,39 @@ export class GraphCanvas {
   private redrawPhosphor(): void {
     if (!this.phosphor) return;
 
-    if (!this.phosphorAccumulate) {
-      this.phosphor.clear();
+    // Triggered accumulation fades old sweeps (persistence); scrolling mode
+    // doesn't fade — history physically exits off the left edge.
+    this.phosphor.decayPerSecond = this.phosphorAccumulate ? 0.25 : 1.0;
+
+    // Samples are deposited incrementally as data arrives (see
+    // TimeseriesGraph.onPhosphorData); a full re-scatter happens only when
+    // the view transform changes or the data buffer is rebuilt.
+    const t = makeTransform(this.geom, this.xaxis, this.yaxis);
+    const pt = this.phosphorTransform;
+    if (!pt || pt[0] !== t[0] || pt[1] !== t[1] || pt[2] !== t[2] || pt[3] !== t[3]) {
+      this.phosphorNeedsFull = true;
     }
 
-    const [sx, sy, dx, dy] = makeTransform(this.geom, this.xaxis, this.yaxis);
+    if (this.phosphorNeedsFull) {
+      this.phosphorNeedsFull = false;
+      this.phosphorTransform = t;
+      this.phosphorShiftCarry = 0;
+      this.phosphor.clear();
+      this.phosphorFullScatter(t);
+    }
 
+    if (this.phosphor.render(this.geom)) {
+      this.needsRedraw(); // persistence still fading
+    }
+  }
+
+  protected phosphorFullScatter([sx, sy, dx, dy]: [number, number, number, number]): void {
     for (const series of this.series) {
-      this.phosphor.scatter(
+      this.phosphor!.scatter(
         series.xdata, series.ydata,
         sx, sy, dx, dy, this.geom,
       );
     }
-    this.phosphor.render(this.geom);
   }
 
   private redrawGraphCanvas2D(): void {

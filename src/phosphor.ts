@@ -56,7 +56,12 @@ export class PhosphorRenderer {
   private logLUT = buildLogLUT();
   private plotW = 0;
   private plotH = 0;
-  private decay = 0.92;
+  // Fraction of accumulated energy remaining after one second (wall-clock).
+  // 1.0 = no fade (scrolling mode: samples exit by scrolling off the left
+  // edge); <1 = persistence fade for triggered accumulation.
+  decayPerSecond = 1.0;
+  private lastRenderTime = 0;
+  private dirty = true;
   private peakAccum = 1; // auto-ranging normalizer
 
   constructor(parent: HTMLElement, color: [number, number, number], insertBefore?: HTMLCanvasElement) {
@@ -85,6 +90,27 @@ export class PhosphorRenderer {
       this.imgData = this.ctx.createImageData(this.plotW, this.plotH);
     }
     this.peakAccum = 1;
+    this.dirty = true;
+  }
+
+  // Scroll the accumulation buffer left by a whole number of pixels
+  // (continuous mode: history moves with the data, new samples deposit at
+  // the right edge).
+  shiftLeft(px: number): void {
+    const w = this.plotW;
+    const h = this.plotH;
+    if (px <= 0 || w <= 0) return;
+    const accum = this.accum;
+    if (px >= w) {
+      accum.fill(0);
+    } else {
+      for (let row = 0; row < h; row++) {
+        const start = row * w;
+        accum.copyWithin(start, start + px, start + w);
+        accum.fill(0, start + w - px, start + w);
+      }
+    }
+    this.dirty = true;
   }
 
   // Bilinear deposit: distribute `energy` over the 4 pixels around the
@@ -113,7 +139,9 @@ export class PhosphorRenderer {
    * segments between consecutive samples (like a real scope's beam).
    * Each segment deposits constant total energy regardless of length, so
    * fast slews are faint and dwell regions are bright — analog-style
-   * intensity grading.
+   * intensity grading. A sample's energy lives in its outgoing segment
+   * (endpoint exclusive), so chunked/incremental calls that overlap by one
+   * sample for line continuity (`openEnded`) never double-deposit.
    * xdata/ydata are in data-space; transform coefficients convert to pixel-space.
    */
   scatter(
@@ -121,6 +149,7 @@ export class PhosphorRenderer {
     ydata: Float32Array | number[],
     sx: number, sy: number, dx: number, dy: number,
     geom: Geom,
+    openEnded = false,
   ): void {
     const w = this.plotW;
     const h = this.plotH;
@@ -133,6 +162,7 @@ export class PhosphorRenderer {
     const maxSteps = 4 * (w + h);
 
     let havePrev = false;
+    let segmentsFromPrev = false;
     let px0 = 0, py0 = 0;
 
     for (let i = 0; i < len; i++) {
@@ -140,13 +170,15 @@ export class PhosphorRenderer {
       const py = (ydata[i] * sy + dy) - ytop;
 
       if (isNaN(px) || isNaN(py)) {
+        // Isolated point with no segment: deposit it as a dot
+        if (havePrev && !segmentsFromPrev) this.deposit(px0, py0, 1);
         havePrev = false;
         continue;
       }
 
       if (!havePrev) {
-        this.deposit(px, py, 1);
         havePrev = true;
+        segmentsFromPrev = false;
         px0 = px;
         py0 = py;
         continue;
@@ -159,6 +191,7 @@ export class PhosphorRenderer {
         || (py < 0 && py0 < 0) || (py >= h && py0 >= h)) {
         px0 = px;
         py0 = py;
+        segmentsFromPrev = true; // energy intentionally dropped off-plot
         continue;
       }
 
@@ -166,7 +199,7 @@ export class PhosphorRenderer {
       if (steps < 1) steps = 1;
       if (steps > maxSteps) steps = maxSteps;
 
-      // Exclude the endpoint: it is deposited as the start of the next segment
+      // Endpoint exclusive: that energy belongs to the next segment
       const energy = 1 / steps;
       const stepX = segDx / steps;
       const stepY = segDy / steps;
@@ -180,26 +213,38 @@ export class PhosphorRenderer {
 
       px0 = px;
       py0 = py;
+      segmentsFromPrev = true;
     }
 
-    // Deposit the final endpoint so the newest sample is visible
-    if (havePrev) {
+    // The last sample's energy arrives with its outgoing segment in the
+    // next incremental call; deposit it now only if no more data will
+    // continue this polyline.
+    if (havePrev && !openEnded) {
       this.deposit(px0, py0, 1);
     }
+    this.dirty = true;
   }
 
   /**
-   * Apply decay and render the accumulation buffer to the canvas.
+   * Apply wall-clock decay and render the accumulation buffer to the canvas.
+   * Returns true if another frame is needed (persistence still fading).
    */
-  render(geom: Geom): void {
+  render(geom: Geom): boolean {
     const w = this.plotW;
     const h = this.plotH;
-    if (w <= 0 || h <= 0 || !this.imgData) return;
+    if (w <= 0 || h <= 0 || !this.imgData) return false;
+
+    const now = performance.now();
+    const dt = this.lastRenderTime ? Math.min(0.25, (now - this.lastRenderTime) / 1000) : 0;
+    this.lastRenderTime = now;
+    const fading = this.decayPerSecond < 1;
+    const decay = fading ? Math.pow(this.decayPerSecond, dt) : 1;
+
+    if (!this.dirty && !fading) return false;
 
     const accum = this.accum;
     const pixels = this.imgData.data;
     const cmap = this.colormap;
-    const decay = this.decay;
 
     // Find current peak for auto-ranging normalization
     let peak = 0;
@@ -223,17 +268,21 @@ export class PhosphorRenderer {
       pixels[po + 2] = cmap[co + 2];
       pixels[po + 3] = cmap[co + 3];
 
-      // Decay
-      accum[i] *= decay;
+      if (fading) accum[i] *= decay;
     }
 
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.putImageData(this.imgData, geom.xleft, geom.ytop);
+
+    this.dirty = false;
+    // Keep animating while fading content remains visible
+    return fading && peak * lutScale >= 1;
   }
 
   clear(): void {
     this.accum.fill(0);
     this.peakAccum = 1;
+    this.dirty = true;
   }
 
   destroy(): void {

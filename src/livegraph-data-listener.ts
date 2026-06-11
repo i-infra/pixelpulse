@@ -105,9 +105,12 @@ export class TimeseriesGraphListener extends DataListener {
 
     let pts = lg.width / 2 * (max - min) / span;
     if (this.phosphorRaw) {
-      // Request undecimated data: all raw samples in the window, capped at 100k
+      // Request raw samples up to what the screen can actually depict:
+      // density resolution saturates around a couple hundred samples per
+      // pixel column. Beyond that, fall back to (averaged) decimation.
       const rawPts = (max - min) / this.device.sampleTime;
-      pts = Math.min(rawPts, 100000);
+      const budget = Math.min(lg.width * 256, 250000);
+      pts = Math.min(rawPts, budget);
     }
     this.configure(min, max, pts);
     this.submit();
@@ -324,6 +327,60 @@ export class TimeseriesGraph extends GraphCanvas {
     this.dseries = dseries;
     this.stream = stream;
     this.onResized = () => this.timeseries.queueWindowUpdate();
+
+    timeseries.updated.subscribe(this.onPhosphorData);
+    timeseries.reset.subscribe(() => { this.phosphorNeedsFull = true; });
+  }
+
+  // Incremental phosphor deposit: each sample is added to the accumulator
+  // exactly once when it arrives, so brightness is a true density count.
+  // In scrolling mode the accumulator is shifted left in step with the data.
+  private onPhosphorData = (m: UpdateMessage): void => {
+    if (!this.phosphorEnabled || !this.phosphor || this.phosphorNeedsFull || !this.phosphorTransform) {
+      return;
+    }
+    const arr = m.data[this.timeseries.streamIndex(this.stream)];
+    const n = arr?.length ?? 0;
+    if (!n) return;
+
+    const [sx, sy, dx, dy] = this.phosphorTransform;
+    const xdata = this.dseries.xdata as Float32Array;
+    const ydata = this.dseries.ydata as Float32Array;
+
+    if (!this.timeseries.trigger && this.timeseries.xmin < 0) {
+      // Scrolling: history moves left with the data; new samples land at
+      // the right edge. Fractional pixel shifts are carried over.
+      this.phosphorShiftCarry += n * this.timeseries.sampleTime * sx;
+      const shift = Math.floor(this.phosphorShiftCarry);
+      if (shift > 0) {
+        this.phosphor.shiftLeft(shift);
+        this.phosphorShiftCarry -= shift;
+      }
+      const start = Math.max(0, ydata.length - n - 1); // -1: line continuity
+      this.phosphor.scatter(xdata.subarray(start), ydata.subarray(start), sx, sy, dx, dy, this.geom, true);
+    } else {
+      // Sweep mode: deposit the newly arrived chunk in place
+      const start = Math.max(0, m.idx - 1);
+      const end = Math.min(xdata.length, ydata.length, m.idx + n);
+      if (end > start) {
+        this.phosphor.scatter(xdata.subarray(start, end), ydata.subarray(start, end), sx, sy, dx, dy, this.geom, true);
+      }
+    }
+  };
+
+  // Full re-scatter (transform change / buffer rebuild): only the region of
+  // the buffer that holds real samples — the zero-initialized remainder
+  // would deposit a false line at y=0.
+  protected override phosphorFullScatter([sx, sy, dx, dy]: [number, number, number, number]): void {
+    if (!this.phosphor) return;
+    const [j0, j1] = this.timeseries.validRange();
+    const xdata = this.dseries.xdata as Float32Array;
+    const ydata = this.dseries.ydata as Float32Array;
+    const start = Math.max(0, j0);
+    const end = Math.min(j1, xdata.length, ydata.length);
+    if (end > start) {
+      this.phosphor.scatter(xdata.subarray(start, end), ydata.subarray(start, end), sx, sy, dx, dy, this.geom);
+    }
   }
 
   override onClick(pos: [number, number], _e: MouseEvent): void {
