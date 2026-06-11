@@ -17,6 +17,7 @@ export default defineConfig({
         editsenseresistor: resolve(__dirname, 'src/editsenseresistor.html'),
         setup: resolve(__dirname, 'src/setup.html'),
         m1k_advanced: resolve(__dirname, 'src/m1k_advanced.html'),
+        m1k_calibrate: resolve(__dirname, 'src/m1k_calibrate.html'),
       },
     },
   },
