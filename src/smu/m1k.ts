@@ -139,6 +139,12 @@ export class M1KDevice extends StreamingDevice {
   private fwInterleaved = false;
 
   private mode: [number, number] = [M1KMode.HI_Z, M1KMode.HI_Z];
+
+  // Output/input lead tracking for stream resync (see handleInTransfer)
+  private leadBaseline: number | null = null;
+  private leadMin = Infinity;
+  private leadCount = 0;
+  private leadSettle = 16;
   private m1kPer = 0;
   private packetsPerTransfer = 1;
 
@@ -277,6 +283,7 @@ export class M1KDevice extends StreamingDevice {
     if (this.packetsPerTransfer < 1) this.packetsPerTransfer = 1;
 
     this.capture_i = this.capture_o = 0;
+    this.resetLeadTracking();
 
     this.channels.push(this.channelA);
     this.channelA.source = makeConstantSource(0, 0);
@@ -374,6 +381,7 @@ export class M1KDevice extends StreamingDevice {
 
     // Ignore output samples sent before pausing
     this.capture_o = this.capture_i;
+    this.resetLeadTracking();
 
     this.inPump = new InPump(
       this.usb, EP_BULK_IN,
@@ -411,6 +419,7 @@ export class M1KDevice extends StreamingDevice {
     await stopping;
 
     this.capture_o = this.capture_i;
+    this.resetLeadTracking();
   }
 
   private onStreamError(e: Error): void {
@@ -477,6 +486,42 @@ export class M1KDevice extends StreamingDevice {
     this.packetDone();
     this.checkOutputEffective(this.channelA);
     this.checkOutputEffective(this.channelB);
+
+    // --- Output/input stream resync ---
+    // capture_o (encode position) and capture_i (capture position) advance
+    // in lockstep with a fixed queue lead. Scheduling stalls (tab
+    // throttling, GC pauses) can let the device replay stale ring data
+    // while encoding pauses, permanently shifting that lead - and with it
+    // the phase relationship out-source triggers depend on. Track the
+    // per-window minimum lead and re-anchor capture_o when it drifts; the
+    // correction causes a one-time output glitch of |drift| samples but
+    // restores index-space alignment.
+    const lead = this.capture_o - this.capture_i;
+    if (this.leadSettle > 0) {
+      this.leadSettle--;
+    } else {
+      if (lead < this.leadMin) this.leadMin = lead;
+      if (++this.leadCount >= 64) {
+        if (this.leadBaseline === null) {
+          this.leadBaseline = this.leadMin;
+        } else {
+          const drift = this.leadMin - this.leadBaseline;
+          if (Math.abs(drift) > M1K_CHUNK_SIZE / 2) {
+            this.capture_o -= drift;
+            console.warn(`M1K: output stream resynced by ${-drift} samples`);
+          }
+        }
+        this.leadMin = Infinity;
+        this.leadCount = 0;
+      }
+    }
+  }
+
+  private resetLeadTracking(): void {
+    this.leadBaseline = null;
+    this.leadMin = Infinity;
+    this.leadCount = 0;
+    this.leadSettle = 16;
   }
 
   // --- OUT transfer encoding ---
