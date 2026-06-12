@@ -11,6 +11,18 @@ import { PhosphorRenderer } from './phosphor.js';
 export const PADDING = 10;
 export const AXIS_SPACING = 25;
 
+// Snap to half-gridline resolution: midpoints between the rendered lines
+// count too, keeping snap steps fine without busying up the grid. The
+// lattice extrapolates past the drawn ticks so drags beyond the edge
+// still snap.
+function nearestTick(value: number, grid?: [number, string][]): number {
+  if (!grid || grid.length === 0) return value;
+  if (grid.length === 1) return grid[0][0];
+  const step = (grid[1][0] - grid[0][0]) / 2;
+  if (!(step > 0)) return value;
+  return grid[0][0] + Math.round((value - grid[0][0]) / step) * step;
+}
+
 // --- Geometry ---
 
 export interface Geom {
@@ -460,6 +472,17 @@ export class GraphCanvas {
     this.onResized?.();
     this.refreshViewParams();
     this.needsRedraw(true);
+  }
+
+  // Snap a data-space coordinate to the nearest drawn gridline value, so
+  // scrubbing drag handles steps through round values (with phosphor
+  // persistence, each step leaves a distinct overlaid trace).
+  snapX(value: number): number {
+    return nearestTick(value, this.xaxis?.gridLabels(this.xgridticks));
+  }
+
+  snapY(value: number): number {
+    return nearestTick(value, this.yaxis?.gridLabels(this.ygridticks));
   }
 
   enablePhosphor(color: [number, number, number]): void {

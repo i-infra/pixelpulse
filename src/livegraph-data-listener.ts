@@ -218,6 +218,9 @@ export class TimeseriesGraphListener extends DataListener {
 
     for (const lg of this.graphs) {
       lg.showXgridZero = true;
+      // Full time grid in triggered mode: drag handles snap to it, so
+      // V/I ratios and periods can be read off the gridlines
+      lg.showXgrid = true;
     }
 
     const defaultTriggerLevel = 2.5;
@@ -285,6 +288,7 @@ export class TimeseriesGraphListener extends DataListener {
     this.xaxis.window(-10, 0, true);
     for (const lg of this.graphs) {
       lg.showXgridZero = false;
+      lg.showXgrid = false;
     }
     this.triggerOverlay?.remove();
     this.triggerOverlay = null;
@@ -386,26 +390,35 @@ export class TimeseriesGraph extends GraphCanvas {
   override onClick(pos: [number, number], _e: MouseEvent): void {
     const [x, y] = pos;
 
+    // Wave/square handle drags snap to the drawn gridlines: scrubbing
+    // steps through round values, and with phosphor persistence each step
+    // leaves a distinct trace (eyeball impedance vs frequency, V/I ratio
+    // vs amplitude, against the grid).
     if (this.dotConfig === 'wave' && this.dots.offset?.isNear(x, y, 10)) {
       new DragDotAction(this, pos, (lg, _x, y) => {
-        lg.stream.parent.setAdjust({ offset: y });
+        lg.stream.parent.setAdjust({ offset: lg.snapY(y) });
       });
     } else if (this.dotConfig === 'wave' && this.dots.period?.isNear(x, y, 10)) {
       new DragDotAction(this, pos, (lg, x, y) => {
+        const sx = lg.snapX(x);
         // Clamp at zero: dragging below the offset would silently set a
         // negative amplitude, inverting the waveform's phase relative to
         // the drag handles
-        const amplitude = Math.max(0, y - (lg.stream.parent.source.offset ?? 0));
-        const period = Math.max(5, x * 4 / (server.device as CEEDevice).sampleTime);
+        const amplitude = Math.max(0, lg.snapY(y) - (lg.stream.parent.source.offset ?? 0));
+        // Don't let a snap to x<=0 collapse the period
+        const px = sx > 0 ? sx : x;
+        const period = Math.max(5, px * 4 / (server.device as CEEDevice).sampleTime);
         lg.stream.parent.setAdjust({ amplitude, period });
       });
     } else if (this.dotConfig === 'square' && this.dots.v1?.isNear(x, y, 10)) {
       new DragDotAction(this, pos, (lg, x, y) => {
         const { highSamples = 0, lowSamples = 0 } = lg.stream.parent.source;
         const period = highSamples + lowSamples;
-        const xAdj = Math.max(0, Math.min(period - 1, x / (server.device as CEEDevice).sampleTime)) + 1;
+        const sx = lg.snapX(x);
+        const px = sx > 0 ? sx : x;
+        const xAdj = Math.max(0, Math.min(period - 1, px / (server.device as CEEDevice).sampleTime)) + 1;
         lg.stream.parent.setAdjust({
-          high: y,
+          high: lg.snapY(y),
           highSamples: Math.round(xAdj),
           lowSamples: period - Math.round(xAdj),
           dutyCycleHint: xAdj / period,
@@ -414,11 +427,13 @@ export class TimeseriesGraph extends GraphCanvas {
     } else if (this.dotConfig === 'square' && this.dots.v2?.isNear(x, y, 10)) {
       new DragDotAction(this, pos, (lg, x, y) => {
         const { dutyCycleHint = 0.5 } = lg.stream.parent.source;
-        const newPeriod = Math.round(Math.max(2, x / (server.device as CEEDevice).sampleTime + 1));
+        const sx = lg.snapX(x);
+        const px = sx > 0 ? sx : x;
+        const newPeriod = Math.round(Math.max(2, px / (server.device as CEEDevice).sampleTime + 1));
         lg.stream.parent.setAdjust({
           highSamples: Math.round(dutyCycleHint * newPeriod),
           lowSamples: Math.round((1 - dutyCycleHint) * newPeriod),
-          low: y,
+          low: lg.snapY(y),
           dutyCycleHint,
         });
       });

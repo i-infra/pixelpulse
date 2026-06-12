@@ -79,13 +79,8 @@ export function initView(dev: CEEDevice): void {
     timeseries, makeStreamSelect, layoutChanged,
   );
 
-  // Show x-axis ticks on the last stream
-  const lastGraph = timeseries.graphs[timeseries.graphs.length - 1];
-  lastGraph.showXbottom = true;
-  lastGraph.div.style.marginBottom = `${-AXIS_SPACING + 5}px`;
-  const aside = lastGraph.div.parentElement?.querySelector('aside') as HTMLElement | null;
-  if (aside) aside.style.marginBottom = `${-AXIS_SPACING + 5}px`;
-  lastGraph.resized();
+  // Show x-axis ticks on the last visible stream
+  relayoutXAxis();
 
   // Density rendering is the default: noise renders as an honest
   // confidence band instead of an averaged line
@@ -98,6 +93,33 @@ export function initView(dev: CEEDevice): void {
   }
 
   meterListener.submit();
+}
+
+// The time-axis labels are drawn by exactly one graph (showXbottom).
+// Rows can be hidden (M1K Hi-Z hides the current stream), so the labels
+// must follow the last *visible* graph.
+function relayoutXAxis(): void {
+  let lastVisible: TimeseriesGraph | null = null;
+  for (const lg of timeseries.graphs) {
+    const section = lg.div.closest('section.stream') as HTMLElement | null;
+    if (section && section.style.display !== 'none') {
+      lastVisible = lg;
+    }
+  }
+
+  for (const lg of timeseries.graphs) {
+    const isLast = lg === lastVisible;
+    if (lg.showXbottom === isLast) continue;
+    lg.showXbottom = isLast;
+
+    const margin = isLast ? `${-AXIS_SPACING + 5}px` : '';
+    lg.div.style.marginBottom = margin;
+    const aside = lg.div.parentElement?.querySelector('aside') as HTMLElement | null;
+    if (aside) aside.style.marginBottom = margin;
+
+    lg.resized();
+    lg.needsRedraw(true);
+  }
 }
 
 export function toggleTrigger(): void {
@@ -243,6 +265,7 @@ class ChannelView {
       const hide = mode === 0;
       if ((iView.el.style.display === 'none') !== hide) {
         iView.el.style.display = hide ? 'none' : '';
+        relayoutXAxis(); // time labels follow the last visible graph
         layoutChanged.notify(); // graphs re-measure on next redraw
       }
     }
